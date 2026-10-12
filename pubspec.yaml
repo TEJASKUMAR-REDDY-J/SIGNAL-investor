@@ -1,0 +1,32 @@
+name: signal_investor
+description: "Private, tax-aware ledger for Indian mutual funds and NSE stocks."
+publish_to: 'none'
+version: 0.1.0+1
+
+environment:
+  sdk: ^3.13.5
+
+dependencies:
+  flutter:
+    sdk: flutter
+  drift: ^2.35.2
+  sqlite3: ^3.7.0
+  path_provider: ^2.1.6
+  flutter_secure_storage: ^11.2.0
+  local_auth: ^3.0.2
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^6.0.0
+  drift_dev: ^2.35.1
+  build_runner: ^2.16.2
+
+# Bundle SQLite3MultipleCiphers instead of plain SQLite (encryption).
+hooks:
+  user_defines:
+    sqlite3:
+      source: sqlite3mc
+
+flutter:
+  uses-material-design: true
