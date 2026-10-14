@@ -8264,6 +8264,213 @@ class PaperTradesCompanion extends UpdateCompanion<PaperTrade> {
   }
 }
 
+class $WatchlistTable extends Watchlist with TableInfo<$WatchlistTable, Watch> {
+  @override
+  final GeneratedDatabase attachedDatabase;
+  final String? _alias;
+  $WatchlistTable(this.attachedDatabase, [this._alias]);
+  static const VerificationMeta _instrumentIdMeta = const VerificationMeta(
+    'instrumentId',
+  );
+  @override
+  late final GeneratedColumn<int> instrumentId = GeneratedColumn<int>(
+    'instrument_id',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _addedAtMeta = const VerificationMeta(
+    'addedAt',
+  );
+  @override
+  late final GeneratedColumn<DateTime> addedAt = GeneratedColumn<DateTime>(
+    'added_at',
+    aliasedName,
+    false,
+    type: DriftSqlType.dateTime,
+    requiredDuringInsert: true,
+  );
+  @override
+  List<GeneratedColumn> get $columns => [instrumentId, addedAt];
+  @override
+  String get aliasedName => _alias ?? actualTableName;
+  @override
+  String get actualTableName => $name;
+  static const String $name = 'watchlist';
+  @override
+  VerificationContext validateIntegrity(
+    Insertable<Watch> instance, {
+    bool isInserting = false,
+  }) {
+    final context = VerificationContext();
+    final data = instance.toColumns(true);
+    if (data.containsKey('instrument_id')) {
+      context.handle(
+        _instrumentIdMeta,
+        instrumentId.isAcceptableOrUnknown(
+          data['instrument_id']!,
+          _instrumentIdMeta,
+        ),
+      );
+    }
+    if (data.containsKey('added_at')) {
+      context.handle(
+        _addedAtMeta,
+        addedAt.isAcceptableOrUnknown(data['added_at']!, _addedAtMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_addedAtMeta);
+    }
+    return context;
+  }
+
+  @override
+  Set<GeneratedColumn> get $primaryKey => {instrumentId};
+  @override
+  Watch map(Map<String, dynamic> data, {String? tablePrefix}) {
+    final effectivePrefix = tablePrefix != null ? '$tablePrefix.' : '';
+    return Watch(
+      instrumentId: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}instrument_id'],
+      )!,
+      addedAt: attachedDatabase.typeMapping.read(
+        DriftSqlType.dateTime,
+        data['${effectivePrefix}added_at'],
+      )!,
+    );
+  }
+
+  @override
+  $WatchlistTable createAlias(String alias) {
+    return $WatchlistTable(attachedDatabase, alias);
+  }
+}
+
+class Watch extends DataClass implements Insertable<Watch> {
+  final int instrumentId;
+  final DateTime addedAt;
+  const Watch({required this.instrumentId, required this.addedAt});
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    map['instrument_id'] = Variable<int>(instrumentId);
+    map['added_at'] = Variable<DateTime>(addedAt);
+    return map;
+  }
+
+  WatchlistCompanion toCompanion(bool nullToAbsent) {
+    return WatchlistCompanion(
+      instrumentId: Value(instrumentId),
+      addedAt: Value(addedAt),
+    );
+  }
+
+  factory Watch.fromJson(
+    Map<String, dynamic> json, {
+    ValueSerializer? serializer,
+  }) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return Watch(
+      instrumentId: serializer.fromJson<int>(json['instrumentId']),
+      addedAt: serializer.fromJson<DateTime>(json['addedAt']),
+    );
+  }
+  @override
+  Map<String, dynamic> toJson({ValueSerializer? serializer}) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return <String, dynamic>{
+      'instrumentId': serializer.toJson<int>(instrumentId),
+      'addedAt': serializer.toJson<DateTime>(addedAt),
+    };
+  }
+
+  Watch copyWith({int? instrumentId, DateTime? addedAt}) => Watch(
+    instrumentId: instrumentId ?? this.instrumentId,
+    addedAt: addedAt ?? this.addedAt,
+  );
+  Watch copyWithCompanion(WatchlistCompanion data) {
+    return Watch(
+      instrumentId: data.instrumentId.present
+          ? data.instrumentId.value
+          : this.instrumentId,
+      addedAt: data.addedAt.present ? data.addedAt.value : this.addedAt,
+    );
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('Watch(')
+          ..write('instrumentId: $instrumentId, ')
+          ..write('addedAt: $addedAt')
+          ..write(')'))
+        .toString();
+  }
+
+  @override
+  int get hashCode => Object.hash(instrumentId, addedAt);
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      (other is Watch &&
+          other.instrumentId == this.instrumentId &&
+          other.addedAt == this.addedAt);
+}
+
+class WatchlistCompanion extends UpdateCompanion<Watch> {
+  final Value<int> instrumentId;
+  final Value<DateTime> addedAt;
+  const WatchlistCompanion({
+    this.instrumentId = const Value.absent(),
+    this.addedAt = const Value.absent(),
+  });
+  WatchlistCompanion.insert({
+    this.instrumentId = const Value.absent(),
+    required DateTime addedAt,
+  }) : addedAt = Value(addedAt);
+  static Insertable<Watch> custom({
+    Expression<int>? instrumentId,
+    Expression<DateTime>? addedAt,
+  }) {
+    return RawValuesInsertable({
+      if (instrumentId != null) 'instrument_id': instrumentId,
+      if (addedAt != null) 'added_at': addedAt,
+    });
+  }
+
+  WatchlistCompanion copyWith({
+    Value<int>? instrumentId,
+    Value<DateTime>? addedAt,
+  }) {
+    return WatchlistCompanion(
+      instrumentId: instrumentId ?? this.instrumentId,
+      addedAt: addedAt ?? this.addedAt,
+    );
+  }
+
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    if (instrumentId.present) {
+      map['instrument_id'] = Variable<int>(instrumentId.value);
+    }
+    if (addedAt.present) {
+      map['added_at'] = Variable<DateTime>(addedAt.value);
+    }
+    return map;
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('WatchlistCompanion(')
+          ..write('instrumentId: $instrumentId, ')
+          ..write('addedAt: $addedAt')
+          ..write(')'))
+        .toString();
+  }
+}
+
 abstract class _$ProfileDb extends GeneratedDatabase {
   _$ProfileDb(QueryExecutor e) : super(e);
   $ProfileDbManager get managers => $ProfileDbManager(this);
@@ -8278,6 +8485,7 @@ abstract class _$ProfileDb extends GeneratedDatabase {
     this,
   );
   late final $PaperTradesTable paperTrades = $PaperTradesTable(this);
+  late final $WatchlistTable watchlist = $WatchlistTable(this);
   @override
   Iterable<TableInfo<Table, Object?>> get allTables =>
       allSchemaEntities.whereType<TableInfo<Table, Object?>>();
@@ -8292,6 +8500,7 @@ abstract class _$ProfileDb extends GeneratedDatabase {
     holdingPrefs,
     profileSettings,
     paperTrades,
+    watchlist,
   ];
   @override
   DriftDatabaseOptions get options =>
@@ -10261,6 +10470,146 @@ typedef $$PaperTradesTableProcessedTableManager =
       PaperTrade,
       PrefetchHooks Function()
     >;
+typedef $$WatchlistTableCreateCompanionBuilder = WatchlistCompanion Function({
+  Value<int> instrumentId,
+  required DateTime addedAt,
+});
+typedef $$WatchlistTableUpdateCompanionBuilder = WatchlistCompanion Function({
+  Value<int> instrumentId,
+  Value<DateTime> addedAt,
+});
+
+class $$WatchlistTableFilterComposer
+    extends Composer<_$ProfileDb, $WatchlistTable> {
+  $$WatchlistTableFilterComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnFilters<int> get instrumentId => $composableBuilder(
+    column: $table.instrumentId,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<DateTime> get addedAt => $composableBuilder(
+    column: $table.addedAt,
+    builder: (column) => ColumnFilters(column),
+  );
+}
+
+class $$WatchlistTableOrderingComposer
+    extends Composer<_$ProfileDb, $WatchlistTable> {
+  $$WatchlistTableOrderingComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnOrderings<int> get instrumentId => $composableBuilder(
+    column: $table.instrumentId,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<DateTime> get addedAt => $composableBuilder(
+    column: $table.addedAt,
+    builder: (column) => ColumnOrderings(column),
+  );
+}
+
+class $$WatchlistTableAnnotationComposer
+    extends Composer<_$ProfileDb, $WatchlistTable> {
+  $$WatchlistTableAnnotationComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  GeneratedColumn<int> get instrumentId => $composableBuilder(
+    column: $table.instrumentId,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<DateTime> get addedAt =>
+      $composableBuilder(column: $table.addedAt, builder: (column) => column);
+}
+
+class $$WatchlistTableTableManager
+    extends
+        RootTableManager<
+          _$ProfileDb,
+          $WatchlistTable,
+          Watch,
+          $$WatchlistTableFilterComposer,
+          $$WatchlistTableOrderingComposer,
+          $$WatchlistTableAnnotationComposer,
+          $$WatchlistTableCreateCompanionBuilder,
+          $$WatchlistTableUpdateCompanionBuilder,
+          (Watch, BaseReferences<_$ProfileDb, $WatchlistTable, Watch>),
+          Watch,
+          PrefetchHooks Function()
+        > {
+  $$WatchlistTableTableManager(_$ProfileDb db, $WatchlistTable table)
+    : super(
+        TableManagerState(
+          db: db,
+          table: table,
+          createFilteringComposer: () =>
+              $$WatchlistTableFilterComposer($db: db, $table: table),
+          createOrderingComposer: () =>
+              $$WatchlistTableOrderingComposer($db: db, $table: table),
+          createComputedFieldComposer: () =>
+              $$WatchlistTableAnnotationComposer($db: db, $table: table),
+          updateCompanionCallback:
+              ({
+                Value<int> instrumentId = const Value.absent(),
+                Value<DateTime> addedAt = const Value.absent(),
+              }) => WatchlistCompanion(
+                instrumentId: instrumentId,
+                addedAt: addedAt,
+              ),
+          createCompanionCallback:
+              ({
+                Value<int> instrumentId = const Value.absent(),
+                required DateTime addedAt,
+              }) => WatchlistCompanion.insert(
+                instrumentId: instrumentId,
+                addedAt: addedAt,
+              ),
+          withReferenceMapper: (p0) => p0
+              .map(
+                (e) => (
+                  e.readTable<$WatchlistTable, Watch>(table),
+                  BaseReferences<_$ProfileDb, $WatchlistTable, Watch>(
+                    db,
+                    table,
+                    e,
+                  ),
+                ),
+              )
+              .toList(),
+          prefetchHooksCallback: null,
+        ),
+      );
+}
+
+typedef $$WatchlistTableProcessedTableManager =
+    ProcessedTableManager<
+      _$ProfileDb,
+      $WatchlistTable,
+      Watch,
+      $$WatchlistTableFilterComposer,
+      $$WatchlistTableOrderingComposer,
+      $$WatchlistTableAnnotationComposer,
+      $$WatchlistTableCreateCompanionBuilder,
+      $$WatchlistTableUpdateCompanionBuilder,
+      (Watch, BaseReferences<_$ProfileDb, $WatchlistTable, Watch>),
+      Watch,
+      PrefetchHooks Function()
+    >;
 
 class $ProfileDbManager {
   final _$ProfileDb _db;
@@ -10283,4 +10632,6 @@ class $ProfileDbManager {
       $$ProfileSettingsTableTableManager(_db, _db.profileSettings);
   $$PaperTradesTableTableManager get paperTrades =>
       $$PaperTradesTableTableManager(_db, _db.paperTrades);
+  $$WatchlistTableTableManager get watchlist =>
+      $$WatchlistTableTableManager(_db, _db.watchlist);
 }

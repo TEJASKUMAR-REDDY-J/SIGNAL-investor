@@ -90,9 +90,13 @@ void main() {
     // Second scan within a week uses the cache: no new price calls.
     await runScan(m, net, onProgress: (_, _, _) {}, cancel: CancelToken(), pause: Duration.zero, nowUtc: DateTime.utc(2026, 10, 15));
     expect(priceCalls, 1);
-    // Cancelled before start: nothing scanned.
+    // Cancelled before start: nothing fetched, ideas come straight from the cache.
     final c = CancelToken()..cancelled = true;
-    expect(await runScan(m, net, onProgress: (_, _, _) {}, cancel: c, pause: Duration.zero), isEmpty);
+    final cached = await runScan(m, net, onProgress: (_, _, _) {}, cancel: c, pause: Duration.zero, nowUtc: DateTime.utc(2026, 10, 15));
+    expect(cached.single.input.symbol, 'GOOD');
+    expect(priceCalls, 1);
+    expect((await stockIdeas(m, nowUtc: DateTime.utc(2026, 10, 15))).single.input.symbol, 'GOOD');
+    expect(await stockIdeas(m, exclude: {'GOOD'}), isEmpty);
     await m.close();
   });
 }

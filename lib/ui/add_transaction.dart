@@ -9,6 +9,7 @@ import '../engine/calendar.dart';
 import '../engine/lots.dart';
 import '../engine/money.dart';
 import '../engine/tax.dart';
+import '../pipeline/instruments.dart';
 import '../sources/mfapi.dart';
 import '../sources/net.dart';
 import 'theme.dart';
@@ -65,6 +66,12 @@ class _AddTransactionState extends State<AddTransaction> {
   late final _note = TextEditingController(text: _e?.note ?? '');
   late final _stt = TextEditingController(text: _e == null || _e.sttPaise == 0 ? '' : formatScaled(_e.sttPaise, 2));
   bool _saving = false;
+  // Price autofill: on until the user types their own price.
+  bool _autoPrice = false;
+  bool _fetching = false;
+  String? _priceNote;
+  int _fillSeq = 0;
+  final _net = Net();
 
   Session get s => widget.session;
   bool get _trade => _type == TxType.buy || _type == TxType.sip || _type == TxType.sell;
@@ -84,6 +91,45 @@ class _AddTransactionState extends State<AddTransaction> {
     if (widget.type == TxType.dividend && widget.amountPaise != null) {
       _price.text = formatScaled(widget.amountPaise!, 2);
     }
+    if (_e == null && widget.priceE4 == null) WidgetsBinding.instance.addPostFrameCallback((_) => _autofill(firstTime: true));
+  }
+
+  /// Fills the price per unit for the chosen date: the latest (delayed) price for
+  /// a stock today, else that day's close; a fund's NAV for that day.
+  Future<void> _autofill({bool firstTime = false}) async {
+    if (_inst == null || _e != null || !_trade) return;
+    if (_price.text.trim().isNotEmpty && !_autoPrice) return;
+    final m = s.market;
+    final inst = await (m.select(m.instruments)..where((i) => i.id.equals(_inst!))).getSingleOrNull();
+    if (inst == null || !mounted) return;
+    // Funds are bought by amount; stocks by quantity.
+    if (firstTime && inst.kind == 'mf' && _type != TxType.sell && _units.text.isEmpty) _byAmount = true;
+    final seq = ++_fillSeq;
+    final day = _date;
+    setState(() => (_fetching = true, _priceNote = null));
+    final r = await priceForDay(m, _net, inst, day);
+    if (!mounted || seq != _fillSeq) return;
+    setState(() {
+      _fetching = false;
+      if (r == null) {
+        _priceNote = 'No price found for ${prettyDay(day)}. Type it from your contract note.';
+        return;
+      }
+      final (d, p4) = r;
+      _price.text = inst.kind == 'mf' ? formatScaled(p4, 4) : formatScaled(p4 ~/ 100, 2);
+      _autoPrice = true;
+      final today = fmtDay(d) == fmtDay(istToday());
+      _priceNote = inst.kind == 'mf'
+          ? 'NAV of ${prettyDay(d)}, filled in. Edit if your statement shows a different NAV.'
+          : (today
+              ? 'Latest price (a few minutes delayed), filled in. Change it to the price on your contract note.'
+              : 'Closing price of ${prettyDay(d)}, filled in. Change it to the price you actually paid.');
+    });
+  }
+
+  void _setDate(DateTime d) {
+    setState(() => _date = d);
+    _autofill();
   }
 
   @override
@@ -186,9 +232,15 @@ class _AddTransactionState extends State<AddTransaction> {
     final id = await showModalBottomSheet<int>(
       context: context,
       isScrollControlled: true,
-      builder: (_) => _InstrumentPicker(market: s.market),
+      builder: (_) => InstrumentPicker(market: s.market),
     );
-    if (id != null) setState(() => _inst = id);
+    if (id != null) {
+      setState(() {
+        _inst = id;
+        if (_autoPrice) _price.clear();
+      });
+      _autofill(firstTime: true);
+    }
   }
 
   Future<void> _pickDate() async {
@@ -206,7 +258,7 @@ class _AddTransactionState extends State<AddTransaction> {
             }
           : null,
     );
-    if (d != null) setState(() => _date = DateTime.utc(d.year, d.month, d.day));
+    if (d != null) _setDate(DateTime.utc(d.year, d.month, d.day));
   }
 
   // Rebuild when the shared portfolio recomputes (e.g. a newly added fund).
@@ -261,7 +313,10 @@ class _AddTransactionState extends State<AddTransaction> {
                 avatar: Icon(txIcon(t.name), size: 18),
                 label: Text(txLabel(t.name)),
                 selected: _type == t,
-                onSelected: (_) => setState(() => _type = t),
+                onSelected: (_) {
+                  setState(() => _type = t);
+                  _autofill();
+                },
               ),
           ]),
           const SizedBox(height: 16),
@@ -269,12 +324,12 @@ class _AddTransactionState extends State<AddTransaction> {
           Row(children: [
             Expanded(
               child: Wrap(spacing: 8, children: [
-                ChoiceChip(label: const Text('Today'), selected: _date == today, onSelected: (_) => setState(() => _date = today)),
+                ChoiceChip(label: const Text('Today'), selected: _date == today, onSelected: (_) => _setDate(today)),
                 if (yesterday != today)
                   ChoiceChip(
                     label: Text(yesterday == today.subtract(const Duration(days: 1)) ? 'Yesterday' : 'Last market day'),
                     selected: _date == yesterday,
-                    onSelected: (_) => setState(() => _date = yesterday),
+                    onSelected: (_) => _setDate(yesterday),
                   ),
               ]),
             ),
@@ -313,7 +368,9 @@ class _AddTransactionState extends State<AddTransaction> {
             TextFormField(
               controller: _units,
               keyboardType: const TextInputType.numberWithOptions(decimal: true),
-              decoration: InputDecoration(labelText: _ratio ? 'Ratio' : 'Units', helperText: unitHelp),
+              decoration: InputDecoration(
+                  labelText: _ratio ? 'Ratio' : (inst?.kind == 'stock' ? 'Quantity (shares)' : 'Units'),
+                  helperText: unitHelp),
               validator: (v) => _num(v, 4),
             ),
           if (!_ratio) ...[
@@ -322,9 +379,32 @@ class _AddTransactionState extends State<AddTransaction> {
               controller: _price,
               keyboardType: const TextInputType.numberWithOptions(decimal: true),
               decoration: InputDecoration(
-                  labelText: _type == TxType.dividend ? 'Dividend received' : 'Price / NAV per unit', prefixText: '₹ '),
+                labelText: _type == TxType.dividend ? 'Dividend received' : (_isMf ? 'NAV per unit' : 'Price per share'),
+                prefixText: '₹ ',
+                suffixIcon: _fetching
+                    ? const Padding(padding: EdgeInsets.all(14), child: SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2)))
+                    : (_trade && _inst != null && _e == null
+                        ? IconButton(
+                            tooltip: 'Fill in the market price',
+                            icon: const Icon(Icons.auto_fix_high),
+                            onPressed: () {
+                              _autoPrice = true;
+                              _autofill();
+                            })
+                        : null),
+              ),
+              onChanged: (_) => _autoPrice = false,
               validator: (v) => _num(v, 4),
             ),
+            if (_priceNote != null && _trade)
+              Padding(
+                padding: const EdgeInsets.only(top: 6, left: 4),
+                child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                  Icon(Icons.auto_fix_high, size: 15, color: cs.primary),
+                  const SizedBox(width: 6),
+                  Expanded(child: Text(_priceNote!, style: TextStyle(fontSize: 12, color: cs.onSurfaceVariant))),
+                ]),
+              ),
           ],
           if (_trade && !_mfBuy) ...[
             const SizedBox(height: 12),
@@ -445,14 +525,15 @@ class _AddTransactionState extends State<AddTransaction> {
   }
 }
 
-class _InstrumentPicker extends StatefulWidget {
+/// Search every NSE stock (local list) and every mutual fund (mfapi); pops the instrument id.
+class InstrumentPicker extends StatefulWidget {
   final MarketDb market;
-  const _InstrumentPicker({required this.market});
+  const InstrumentPicker({super.key, required this.market});
   @override
-  State<_InstrumentPicker> createState() => _InstrumentPickerState();
+  State<InstrumentPicker> createState() => _InstrumentPickerState();
 }
 
-class _InstrumentPickerState extends State<_InstrumentPicker> {
+class _InstrumentPickerState extends State<InstrumentPicker> {
   String _q = '';
   List<Listing> _stocks = const [];
   List<(String, String)> _funds = const [];
@@ -502,18 +583,8 @@ class _InstrumentPickerState extends State<_InstrumentPicker> {
     }
   }
 
-  Future<int> _ensureStock(Listing l) async {
-    final hit = await (m.select(m.instruments)..where((i) => i.nseSymbol.equals(l.symbol))).getSingleOrNull();
-    return hit?.id ??
-        await m.into(m.instruments).insert(InstrumentsCompanion.insert(
-            kind: 'stock', name: l.name, nseSymbol: Value(l.symbol), yahooTicker: Value('${l.symbol}.NS')));
-  }
-
-  Future<int> _ensureFund(String code, String name) async {
-    final hit = await (m.select(m.instruments)..where((i) => i.schemeCode.equals(code))).getSingleOrNull();
-    return hit?.id ??
-        await m.into(m.instruments).insert(InstrumentsCompanion.insert(kind: 'mf', name: name, schemeCode: Value(code)));
-  }
+  Future<int> _ensureStock(Listing l) => ensureStock(m, l.symbol, l.name);
+  Future<int> _ensureFund(String code, String name) => ensureFund(m, code, name);
 
   @override
   Widget build(BuildContext context) {

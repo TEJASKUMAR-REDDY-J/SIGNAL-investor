@@ -7,19 +7,56 @@ import '../engine/lots.dart';
 import '../engine/money.dart';
 import '../engine/portfolio.dart';
 import '../engine/valuation.dart';
+import '../pipeline/instruments.dart';
+import '../sources/net.dart';
 import 'add_transaction.dart';
+import 'ask.dart';
+import 'insight.dart';
+import 'sandbox.dart';
 import 'news.dart';
 import 'patience.dart';
 import 'sell_flow.dart';
 import 'theme.dart';
 import 'widgets.dart';
 
-class HoldingScreen extends StatelessWidget {
+/// Page for any stock or fund: owned, watched, or just searched.
+class HoldingScreen extends StatefulWidget {
   final Session session;
   final int instrumentId;
   const HoldingScreen({super.key, required this.session, required this.instrumentId});
+  @override
+  State<HoldingScreen> createState() => _HoldingScreenState();
+}
 
+class _HoldingScreenState extends State<HoldingScreen> {
+  Session get session => widget.session;
+  int get instrumentId => widget.instrumentId;
   ProfileDb get db => session.db;
+  Map<String, num?>? _f; // stock fundamentals
+  bool _loading = true;
+
+  @override
+  void initState() {
+    super.initState();
+    _load();
+  }
+
+  /// First visit: fetch price history (and fundamentals for stocks) so the page is never empty.
+  Future<void> _load() async {
+    final m = session.market;
+    final inst = await (m.select(m.instruments)..where((i) => i.id.equals(instrumentId))).getSingleOrNull();
+    if (inst != null) {
+      final n = Net();
+      try {
+        await ensureHistory(m, n, inst);
+      } catch (_) {}
+      if (inst.kind == 'stock' && inst.nseSymbol != null) {
+        final f = await stockFundamentals(m, n, inst.nseSymbol!);
+        if (mounted) setState(() => _f = f);
+      }
+    }
+    if (mounted) setState(() => _loading = false);
+  }
 
   @override
   Widget build(BuildContext context) => ValueListenableBuilder(
@@ -31,6 +68,7 @@ class HoldingScreen extends StatelessWidget {
           final ledger = p.ledgers[instrumentId] ?? fifo(const []);
           final rows = p.txs.where((t) => t.instrumentId == instrumentId).toList().reversed.toList();
           final h = p.holdings.where((h) => h.instrumentId == instrumentId).firstOrNull;
+          final owned = rows.isNotEmpty;
           return Scaffold(
             appBar: AppBar(
               title: Text(inst?.name ?? 'Holding', overflow: TextOverflow.ellipsis),
@@ -43,15 +81,9 @@ class HoldingScreen extends StatelessWidget {
                   ),
               ],
             ),
-            floatingActionButton: FloatingActionButton.extended(
-              heroTag: 'add-h',
-              onPressed: () => Navigator.push(
-                  context, MaterialPageRoute(builder: (_) => AddTransaction(session: session, instrumentId: instrumentId))),
-              icon: const Icon(Icons.add),
-              label: const Text('Add'),
-            ),
-            body: ListView(padding: const EdgeInsets.fromLTRB(12, 4, 12, 100), children: [
-              _header(context, p, inst, ledger, h),
+            body: ListView(padding: const EdgeInsets.fromLTRB(12, 4, 12, 40), children: [
+              if (owned) _header(context, p, inst, ledger, h) else _quoteHeader(context, p, inst),
+              _actions(context, p, inst),
               if (ledger.oversold.isNotEmpty) ...[
                 const SizedBox(height: 8),
                 Notice(icon: Icons.error_outline, color: cs.loss, text: 'A sell exceeds units held. Fix the dates or units below.'),
@@ -59,75 +91,176 @@ class HoldingScreen extends StatelessWidget {
               if (p.book.series(instrumentId).length > 5) ...[
                 const SectionHeader('Price, 1 year'),
                 Card(child: Padding(padding: const EdgeInsets.fromLTRB(8, 16, 16, 8), child: _PriceChart(p: p, id: instrumentId))),
-              ],
-              _ThesisCard(db: db, instrumentId: instrumentId),
-              if (ledger.open.isNotEmpty) ...[
-                const SectionHeader('Your lots, ripening'),
-                Card(
-                  child: Padding(
-                    padding: const EdgeInsets.all(16),
-                    child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                      Orchard(lots: ledger.open, today: p.today),
-                      const SizedBox(height: 10),
-                      Text('A lot ripens 12 months and a day after you buy it. Ripe lots are long-term and cheaper to sell.',
-                          style: TextStyle(fontSize: 12, color: cs.onSurfaceVariant)),
+              ] else if (_loading)
+                const Padding(padding: EdgeInsets.all(24), child: Center(child: CircularProgressIndicator())),
+              ReturnsCard(p: p, id: instrumentId, isFund: inst?.kind == 'mf'),
+              if (inst?.kind == 'stock') KeyNumbers(f: _f, loading: _loading, session: session, symbol: inst?.nseSymbol),
+              if (inst?.kind == 'stock') NewsSection(session: session, instrumentId: instrumentId),
+              if (owned) ...[
+                _ThesisCard(db: db, instrumentId: instrumentId),
+                if (ledger.open.isNotEmpty) ...[
+                  const SectionHeader('Your lots, ripening'),
+                  Card(
+                    child: Padding(
+                      padding: const EdgeInsets.all(16),
+                      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                        Orchard(lots: ledger.open, today: p.today),
+                        const SizedBox(height: 10),
+                        Text('A lot ripens 12 months and a day after you buy it. Ripe lots are long-term and cheaper to sell.',
+                            style: TextStyle(fontSize: 12, color: cs.onSurfaceVariant)),
+                      ]),
+                    ),
+                  ),
+                ],
+                SectionHeader('Open lots', trailing: Text('FIFO', style: Theme.of(context).textTheme.labelMedium)),
+                if (ledger.open.isEmpty)
+                  const Padding(padding: EdgeInsets.all(8), child: Text('No open lots.'))
+                else
+                  Card(child: Column(children: [for (final l in ledger.open) _LotTile(lot: l, today: p.today)])),
+                if (ledger.realized.isNotEmpty) ...[
+                  const SectionHeader('Realised'),
+                  Card(
+                    child: Column(children: [
+                      for (final r in ledger.realized.reversed)
+                        ListTile(
+                          dense: true,
+                          title: Wrap(children: [
+                            Text('${formatScaled(r.units4, 4)} units  ', style: const TextStyle(fontFeatures: tabular)),
+                            Money(r.gainPaise, decimals: true, signed: true, colored: true),
+                          ]),
+                          subtitle: Text('${prettyDay(r.buyDate)} → ${prettyDay(r.sellDate)}'),
+                          trailing: Pill(r.longTerm ? 'LTCG' : 'STCG', color: r.longTerm ? cs.gain : cs.warn),
+                        ),
                     ]),
                   ),
-                ),
-              ],
-              SectionHeader('Open lots', trailing: Text('FIFO', style: Theme.of(context).textTheme.labelMedium)),
-              if (ledger.open.isEmpty)
-                const Padding(padding: EdgeInsets.all(8), child: Text('No open lots.'))
-              else
-                Card(child: Column(children: [for (final l in ledger.open) _LotTile(lot: l, today: p.today)])),
-              if (inst?.kind == 'stock') NewsSection(session: session, instrumentId: instrumentId),
-              if (ledger.realized.isNotEmpty) ...[
-                const SectionHeader('Realised'),
+                ],
+                SectionHeader('History', trailing: Text('${rows.length}')),
                 Card(
                   child: Column(children: [
-                    for (final r in ledger.realized.reversed)
+                    for (final r in rows)
                       ListTile(
-                        dense: true,
-                        title: Wrap(children: [
-                          Text('${formatScaled(r.units4, 4)} units  ', style: const TextStyle(fontFeatures: tabular)),
-                          Money(r.gainPaise, decimals: true, signed: true, colored: true),
-                        ]),
-                        subtitle: Text('${prettyDay(r.buyDate)} → ${prettyDay(r.sellDate)}'),
-                        trailing: Pill(r.longTerm ? 'LTCG' : 'STCG', color: r.longTerm ? cs.gain : cs.warn),
+                        leading: Icon(txIcon(r.type)),
+                        title: Text('${txLabel(r.type)}  ${txSummary(r)}', style: const TextStyle(fontFeatures: tabular)),
+                        subtitle: Text([
+                          prettyDay(parseDay(r.date)),
+                          if (r.feesPaise > 0) 'charges ${rupees(r.feesPaise)}',
+                          if (r.sttPaise > 0) 'STT ${rupees(r.sttPaise)}',
+                          if (r.note.isNotEmpty) r.note,
+                        ].join(' · ')),
+                        onTap: () => Navigator.push(
+                            context, MaterialPageRoute(builder: (_) => AddTransaction(session: session, existing: r))),
+                        trailing: IconButton(
+                          tooltip: 'Delete',
+                          icon: const Icon(Icons.delete_outline),
+                          onPressed: () => deleteTx(context, session, r),
+                        ),
                       ),
                   ]),
                 ),
               ],
-              SectionHeader('History', trailing: Text('${rows.length}')),
-              Card(
-                child: Column(children: [
-                  for (final r in rows)
-                    ListTile(
-                      leading: Icon(txIcon(r.type)),
-                      title: Text('${txLabel(r.type)}  ${txSummary(r)}', style: const TextStyle(fontFeatures: tabular)),
-                      subtitle: Text([
-                        prettyDay(parseDay(r.date)),
-                        if (r.feesPaise > 0) 'charges ${rupees(r.feesPaise)}',
-                        if (r.sttPaise > 0) 'STT ${rupees(r.sttPaise)}',
-                        if (r.note.isNotEmpty) r.note,
-                      ].join(' · ')),
-                      onTap: () => Navigator.push(
-                          context, MaterialPageRoute(builder: (_) => AddTransaction(session: session, existing: r))),
-                      trailing: IconButton(
-                        tooltip: 'Delete',
-                        icon: const Icon(Icons.delete_outline),
-                        onPressed: () => deleteTx(context, session, r),
-                      ),
-                    ),
-                ]),
-              ),
-              const Fine('Long-term = held more than 12 months (listed equity and equity MFs). Lots are rebuilt from '
-                  'your transactions every time. Prices are end-of-day from public sources. Not tax advice.'),
+              const Fine('Prices come from public sources and run a few minutes behind the exchange. Long-term = held more '
+                  'than 12 months (listed equity and equity MFs). Not investment or tax advice.'),
             ]),
           );
         },
       );
 
+  /// Not owned yet: latest price and the latest move.
+  Widget _quoteHeader(BuildContext context, Portfolio p, Instrument? inst) {
+    final cs = Theme.of(context).colorScheme;
+    final t = Theme.of(context).textTheme;
+    final q = session.quotes.value[instrumentId];
+    final ser = p.book.series(instrumentId);
+    final price = q?.priceE4 ?? ser.lastOrNull?.closeE4;
+    final prev = q?.prevCloseE4 ?? (ser.length >= 2 ? ser[ser.length - 2].closeE4 : null);
+    final bps = price == null || prev == null || prev == 0 ? null : ((price - prev) * 10000 / prev).round();
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Wrap(spacing: 8, crossAxisAlignment: WrapCrossAlignment.center, children: [
+            Pill(inst?.kind == 'mf' ? 'Mutual fund' : 'NSE stock', color: cs.primary),
+            Text(inst?.kind == 'mf' ? 'Scheme ${inst?.schemeCode ?? '-'}' : (inst?.nseSymbol ?? ''),
+                style: TextStyle(color: cs.onSurfaceVariant, fontSize: 12)),
+          ]),
+          const SizedBox(height: 12),
+          if (price == null)
+            Text(_loading ? 'Fetching the latest price…' : 'No price yet. Check your connection and pull to refresh on Home.',
+                style: TextStyle(color: cs.onSurfaceVariant))
+          else ...[
+            Text(priceLabel(price), style: t.headlineLarge?.copyWith(fontWeight: FontWeight.w700, fontFeatures: tabular)),
+            if (bps != null)
+              Text('${bps >= 0 ? '+' : ''}${(bps / 100).toStringAsFixed(2)}% ${inst?.kind == 'mf' ? 'since the previous NAV' : 'today'}',
+                  style: TextStyle(color: cs.signed(bps), fontWeight: FontWeight.w600)),
+            Text(
+                inst?.kind == 'mf'
+                    ? 'NAV of ${prettyDay(ser.last.day)}'
+                    : 'Delayed a few minutes · ${prettyDay(ser.lastOrNull?.day ?? istToday())}',
+                style: TextStyle(color: cs.onSurfaceVariant, fontSize: 12)),
+          ],
+        ]),
+      ),
+    );
+  }
+
+  Widget _actions(BuildContext context, Portfolio p, Instrument? inst) => Padding(
+        padding: const EdgeInsets.only(top: 10),
+        child: ValueListenableBuilder(
+          valueListenable: session.watch,
+          builder: (context, watched, _) {
+            final on = watched.contains(instrumentId);
+            return Wrap(spacing: 8, runSpacing: 8, children: [
+              FilledButton.icon(
+                onPressed: () => Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                        builder: (_) => AddTransaction(session: session, instrumentId: instrumentId, type: TxType.buy))),
+                icon: const Icon(Icons.add_shopping_cart),
+                label: const Text('I bought this'),
+              ),
+              OutlinedButton.icon(
+                onPressed: () => db.setWatched(instrumentId, !on),
+                icon: Icon(on ? Icons.star : Icons.star_border),
+                label: Text(on ? 'Watching' : 'Watch'),
+              ),
+              OutlinedButton.icon(
+                onPressed: inst == null ? null : () => _askAbout(context, p, inst),
+                icon: const Icon(Icons.auto_awesome),
+                label: const Text('Ask AI'),
+              ),
+              TextButton.icon(
+                onPressed: () => Navigator.push(
+                    context, MaterialPageRoute(builder: (_) => SandboxScreen(session: session, buyInstrumentId: instrumentId))),
+                icon: const Icon(Icons.science_outlined),
+                label: const Text('Practice'),
+              ),
+            ]);
+          },
+        ),
+      );
+
+  void _askAbout(BuildContext context, Portfolio p, Instrument inst) {
+    final ser = p.book.series(instrumentId);
+    final facts = <String>[
+      '${inst.name} (${inst.kind == 'mf' ? 'mutual fund, scheme ${inst.schemeCode}' : 'NSE: ${inst.nseSymbol}'})',
+      if (ser.isNotEmpty) 'Latest price ${priceLabel(ser.last.closeE4)} on ${fmtDay(ser.last.day)}',
+      ...returnFacts(p, instrumentId),
+      if (_f != null) ...fundamentalFacts(_f!),
+      for (final n in session.news.value.where((n) => n.instrumentId == instrumentId))
+        'News points, last 7 days: ${n.points} (${n.positive} positive, ${n.negative} negative headlines)',
+    ];
+    Navigator.push(
+        context,
+        MaterialPageRoute(
+            builder: (_) => AskScreen(
+                  session: session,
+                  initialQuestion: inst.kind == 'mf'
+                      ? 'Explain ${inst.name}: what it invests in, how it has done, its risks, and how it would fit my portfolio.'
+                      : 'Explain ${inst.name}: the business, how it is growing, what these numbers say, the main risks, '
+                          'and how it would fit my portfolio.',
+                  extraContext: facts,
+                )));
+  }
   Widget _header(BuildContext context, Portfolio p, Instrument? inst, Ledger l, Holding? h) {
     final cs = Theme.of(context).colorScheme;
     final t = Theme.of(context).textTheme;

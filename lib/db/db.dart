@@ -208,6 +208,15 @@ class PaperTrades extends Table {
   TextColumn get reason => text().withDefault(const Constant(''))();
 }
 
+/// Stocks and funds to follow without owning them (prices and news tracked).
+@DataClassName('Watch')
+class Watchlist extends Table {
+  IntColumn get instrumentId => integer()();
+  DateTimeColumn get addedAt => dateTime()();
+  @override
+  Set<Column> get primaryKey => {instrumentId};
+}
+
 class AuditLog extends Table {
   IntColumn get id => integer().autoIncrement()();
   DateTimeColumn get at => dateTime()();
@@ -231,12 +240,12 @@ class ProfileSettings extends Table {
 }
 
 @DriftDatabase(tables: [
-  Goals, Transactions, SipPlans, Theses, Signals, AuditLog, HoldingPrefs, ProfileSettings, PaperTrades
+  Goals, Transactions, SipPlans, Theses, Signals, AuditLog, HoldingPrefs, ProfileSettings, PaperTrades, Watchlist
 ])
 class ProfileDb extends _$ProfileDb {
   ProfileDb(super.e);
   @override
-  int get schemaVersion => 3;
+  int get schemaVersion => 4;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -254,6 +263,7 @@ class ProfileDb extends _$ProfileDb {
             await m.addColumn(goals, goals.unitName);
             await m.addColumn(goals, goals.unitPaise);
           }
+          if (from < 4) await m.createTable(watchlist);
         },
       );
 
@@ -381,6 +391,14 @@ class ProfileDb extends _$ProfileDb {
 
   Future<int> addPaperTrade(PaperTradesCompanion t) =>
       audited('insert', 'paper_trade ${t.type.value}', () => into(paperTrades).insert(t));
+
+  Future<void> setWatched(int instrumentId, bool on) => audited('edit', 'watch $instrumentId $on', () async {
+        if (on) {
+          await into(watchlist).insertOnConflictUpdate(WatchlistCompanion.insert(instrumentId: Value(instrumentId), addedAt: DateTime.now()));
+        } else {
+          await (delete(watchlist)..where((w) => w.instrumentId.equals(instrumentId))).go();
+        }
+      });
 
   Future<String?> setting(String key) async =>
       (await (select(profileSettings)..where((s) => s.key.equals(key))).getSingleOrNull())?.value;

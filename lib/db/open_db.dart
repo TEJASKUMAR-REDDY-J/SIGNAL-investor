@@ -53,6 +53,8 @@ QueryExecutor openEncrypted(File file, String hexKey) {
   }
   return NativeDatabase.createInBackground(file, setup: (raw) {
     raw.execute("PRAGMA key = '$hexKey';");
+    // The daily background job may write while the app is open: wait, don't fail.
+    raw.execute('PRAGMA busy_timeout = 5000;');
     if (raw.select('PRAGMA cipher;').isEmpty) {
       throw StateError('Database is not encrypted');
     }

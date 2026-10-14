@@ -6,6 +6,8 @@ import 'net.dart';
 // query1.finance.yahoo.com/v8/finance/chart/{T}.NS?range=..&interval=1d, probed 2026-10-14
 // (unofficial; 429 for mobile UAs). chart.result[0]: {meta, timestamp[], indicators.quote[0].close[]}
 // quoteSummary needs a cookie (fc.yahoo.com) + crumb (/v1/test/getcrumb).
+// v7/finance/spark?symbols=A,B&range=1d&interval=1d (probed 2026-10-14): up to 20 symbols per call (more -> 400);
+// spark.result[i] = {symbol, response:[{meta:{regularMarketPrice, chartPreviousClose, previousClose?, regularMarketTime}}]}.
 
 /// (IST date, closeE4), oldest first; null closes skipped.
 List<(String, int)> parseYahooChart(String body) {
@@ -38,6 +40,57 @@ Future<List<(String, int)>> yahooDaily(Net n, String ticker, {String range = '5d
   final r = await n.get('yahoo',
       Uri.https('query1.finance.yahoo.com', '/v8/finance/chart/$ticker', {'range': range, 'interval': '1d'}));
   return parseYahooChart(r.body);
+}
+
+/// Latest traded price and the previous close; Yahoo's NSE feed is delayed a few minutes.
+class Quote {
+  final String ticker;
+  final int priceE4;
+  final int prevCloseE4;
+  final DateTime timeUtc;
+  const Quote(this.ticker, this.priceE4, this.prevCloseE4, this.timeUtc);
+
+  /// IST calendar day of the last trade, as stored in the prices table.
+  String get day {
+    final ist = timeUtc.add(const Duration(hours: 5, minutes: 30));
+    return fmtDay(DateTime.utc(ist.year, ist.month, ist.day));
+  }
+
+  int get changeBps => prevCloseE4 == 0 ? 0 : ((priceE4 - prevCloseE4) * 10000 / prevCloseE4).round();
+}
+
+int? _paiseE4(Object? v) => v is num && v > 0 && v.isFinite ? (v * 100).round() * 100 : null;
+
+List<Quote> parseSpark(String body) {
+  final j = jsonDecode(body);
+  final res = j is Map && j['spark'] is Map ? (j['spark'] as Map)['result'] : null;
+  if (res is! List) throw const FormatException('spark shape');
+  final out = <Quote>[];
+  for (final r in res) {
+    if (r is! Map || r['response'] is! List || (r['response'] as List).isEmpty) continue;
+    final first = (r['response'] as List).first;
+    final m = first is Map ? first['meta'] : null;
+    if (m is! Map) continue;
+    final price = _paiseE4(m['regularMarketPrice']);
+    final prev = _paiseE4(m['previousClose'] ?? m['chartPreviousClose']);
+    final t = m['regularMarketTime'];
+    if (price == null || prev == null || t is! int) continue;
+    out.add(Quote(r['symbol'].toString(), price, prev, DateTime.fromMillisecondsSinceEpoch(t * 1000, isUtc: true)));
+  }
+  return out;
+}
+
+/// Batched live quotes, 20 tickers per request.
+Future<List<Quote>> yahooQuotes(Net n, List<String> tickers) async {
+  final ok = [for (final t in tickers) if (RegExp(r'^[\^A-Z0-9&.\-]{1,25}$').hasMatch(t)) t];
+  final out = <Quote>[];
+  for (var i = 0; i < ok.length; i += 20) {
+    final batch = ok.sublist(i, i + 20 > ok.length ? ok.length : i + 20);
+    final r = await n.get('yahoo', Uri.https('query1.finance.yahoo.com', '/v7/finance/spark',
+        {'symbols': batch.join(','), 'range': '1d', 'interval': '1d'}));
+    out.addAll(parseSpark(r.body));
+  }
+  return out;
 }
 
 /// Cookie + crumb session for quoteSummary (fundamentals).
@@ -90,5 +143,14 @@ Map<String, num?> parseFundamentals(String body) {
     'pe': raw('summaryDetail', 'trailingPE'),
     'pb': raw('defaultKeyStatistics', 'priceToBook'),
     'marketCap': raw('summaryDetail', 'marketCap'),
+    // Growth (year on year, latest quarter) and context for the stock page.
+    'revenueGrowth': raw('financialData', 'revenueGrowth'),
+    'earningsGrowth': raw('financialData', 'earningsGrowth'),
+    'operatingMargins': raw('financialData', 'operatingMargins'),
+    'forwardPe': raw('defaultKeyStatistics', 'forwardPE'),
+    'dividendYield': raw('summaryDetail', 'dividendYield'),
+    'high52': raw('summaryDetail', 'fiftyTwoWeekHigh'),
+    'low52': raw('summaryDetail', 'fiftyTwoWeekLow'),
+    'beta': raw('defaultKeyStatistics', 'beta'),
   };
 }

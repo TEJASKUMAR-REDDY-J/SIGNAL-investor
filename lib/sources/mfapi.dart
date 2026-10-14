@@ -5,7 +5,8 @@ import 'net.dart';
 // api.mfapi.in, probed 2026-10-14:
 // /mf/{code}        -> {meta:{scheme_name,...}, data:[{date:"13-10-2026", nav:"159.99100"}...] newest first}
 // /mf/{code}/latest -> same, data has 1 row
-// /mf/search?q=     -> [{schemeCode:int, schemeName:str}]
+// /mf/search?q=     -> [{schemeCode:int, schemeName:str}] (at most 15 hits)
+// /mf/{code}?startDate=YYYY-MM-DD&endDate=YYYY-MM-DD -> same shape, only that window
 
 String _iso(String ddmmyyyy) {
   final p = ddmmyyyy.split('-');
@@ -37,6 +38,14 @@ MfNavs parseMfapi(String body) {
 Future<MfNavs> mfNavs(Net n, String code, {bool latestOnly = false}) async {
   if (!RegExp(r'^\d{3,7}$').hasMatch(code)) throw FetchError('mfapi', 'bad scheme code');
   final r = await n.get('mfapi', Uri.parse('https://api.mfapi.in/mf/$code${latestOnly ? '/latest' : ''}'));
+  return parseMfapi(r.body);
+}
+
+/// NAVs from [start] to [end] only: a 5-year window is ~50 KB instead of the full history.
+Future<MfNavs> mfNavsBetween(Net n, String code, DateTime start, DateTime end) async {
+  if (!RegExp(r'^\d{3,7}$').hasMatch(code)) throw FetchError('mfapi', 'bad scheme code');
+  String d(DateTime x) => '${x.year}-${x.month.toString().padLeft(2, '0')}-${x.day.toString().padLeft(2, '0')}';
+  final r = await n.get('mfapi', Uri.https('api.mfapi.in', '/mf/$code', {'startDate': d(start), 'endDate': d(end)}));
   return parseMfapi(r.body);
 }
 

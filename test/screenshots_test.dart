@@ -125,7 +125,7 @@ void main() {
 
   setUpAll(loadFonts);
   setUp(() {
-    FlutterSecureStorage.setMockInitialValues({'disclaimer_ok': '1'});
+    FlutterSecureStorage.setMockInitialValues({'disclaimer_ok': '1', 'tour_done': '1', 'notif_asked': '1'});
     db = ProfileDb(NativeDatabase.memory());
     market = MarketDb(NativeDatabase.memory());
     session = Session(const Profile('a1b2c3', 'Profile 1'), db, market, ValueNotifier<Portfolio?>(null), () {});

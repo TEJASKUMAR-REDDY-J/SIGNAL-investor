@@ -3,16 +3,22 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 
 import '../db/db.dart';
+import '../db/open_db.dart';
 import '../engine/calendar.dart';
 
 import 'package:flutter/services.dart';
 
 import '../engine/lots.dart';
+import '../engine/news_score.dart';
 import '../engine/portfolio.dart';
 import '../engine/sell_rules.dart';
 import '../engine/valuation.dart';
+import '../pipeline/background.dart';
 import '../pipeline/feeds.dart';
+import '../pipeline/instruments.dart';
+import '../pipeline/live.dart';
 import '../pipeline/refresh.dart';
+import '../pipeline/scan.dart';
 import '../sources/groq.dart';
 import 'ask.dart';
 import 'lab.dart';
@@ -21,6 +27,7 @@ import '../sources/net.dart';
 import 'activity.dart';
 import 'add_transaction.dart';
 import 'dashboard.dart';
+import 'guide.dart';
 import 'holdings.dart';
 import 'plan.dart';
 import 'widgets.dart';
@@ -42,14 +49,23 @@ class _ShellState extends State<Shell> with WidgetsBindingObserver {
   int _satTarget = 25;
   late final _net = Net();
   Set<int> _paper = const {};
+  Set<int> _ideaIds = const {};
+  List<NewsItem> _newsItems = const [];
+  Timer? _liveTimer;
+  String _savedTracked = '';
   late final _refresher = Refresher(
     s.market,
     _net,
-    extra: [filingsStep(s.market, _net, _held), newsStep(s.market, _net, _held, _groq)],
+    extra: [filingsStep(s.market, _net, _tracked), newsStep(s.market, _net, _tracked, _groq)],
   );
 
-  /// Real holdings plus sandbox positions: everything whose prices we keep fresh.
-  Set<int> _held() => {for (final h in s.portfolio.value?.holdings ?? const <Holding>[]) h.instrumentId, ..._paper};
+  Set<int> _heldReal() => {for (final h in s.portfolio.value?.holdings ?? const <Holding>[]) h.instrumentId};
+
+  /// Holdings, sandbox positions and the watchlist: prices kept fresh.
+  Set<int> _held() => {..._heldReal(), ..._paper, ...s.watch.value};
+
+  /// Plus the advisor's top stock ideas: news and filings tracked for all of these.
+  Set<int> _tracked() => {..._held(), ..._ideaIds};
 
   Future<(String, String)?> _groq() async {
     final key = await groqKeyFor(s.profile.id);
@@ -96,7 +112,84 @@ class _ShellState extends State<Shell> with WidgetsBindingObserver {
       db.select(db.holdingPrefs).watch().listen((v) => _set(() => _prefs = v)),
       db.select(db.goals).watch().listen((v) => _set(() => _goals = v)),
       db.select(db.sipPlans).watch().listen((v) => _set(() => _sips = v)),
+      db.select(db.watchlist).watch().listen((v) {
+        s.watch.value = {for (final w in v) w.instrumentId};
+        _scoreNews();
+        _saveTracked();
+      }),
+      m.select(m.newsItems).watch().listen((v) {
+        _newsItems = v;
+        _scoreNews();
+      }),
     ]);
+    s.reloadIdeas = _loadIdeas;
+    _loadIdeas();
+    _liveTimer = Timer.periodic(const Duration(seconds: 60), (_) {
+      if (_resumed && nse.status(DateTime.now()).phase == MarketPhase.open) _live();
+    });
+    WidgetsBinding.instance.addPostFrameCallback((_) => _startBackground());
+  }
+
+  bool _resumed = true;
+
+  void _scoreNews() {
+    final t = _tracked();
+    s.news.value = newsScores([for (final n in _newsItems) if (t.contains(n.instrumentId)) n], DateTime.now().toUtc());
+  }
+
+  /// Advisor ideas straight from the cache; instrument rows for the top stocks so their news is tracked.
+  Future<void> _loadIdeas() async {
+    final held = {for (final h in s.portfolio.value?.holdings ?? const <Holding>[]) ?h.instrument?.nseSymbol};
+    final ideas = await stockIdeas(s.market, exclude: held);
+    final ids = <int>{};
+    for (final c in ideas) {
+      ids.add(await ensureStock(s.market, c.input.symbol, c.input.name));
+    }
+    if (!mounted) return;
+    _ideaIds = ids;
+    s.stockIdeas.value = ideas;
+    s.fundIdeas.value = await fundIdeas(s.market);
+    _scoreNews();
+    _saveTracked();
+  }
+
+  /// The background job reads this list; it never opens the profile database.
+  void _saveTracked() {
+    final t = (_tracked().toList()..sort()).join(',');
+    if (t == _savedTracked) return;
+    _savedTracked = t;
+    saveTracked(_tracked()).catchError((_) {});
+  }
+
+  /// Live (delayed) quotes for the index strip, holdings and watchlist: one request per 20.
+  Future<void> _live() async {
+    try {
+      final idx = await ensureIndices(s.market);
+      final ids = _held();
+      final inst = [...idx, ...(_inst ?? const <Instrument>[]).where((i) => ids.contains(i.id) && i.kind == 'stock')];
+      final q = await liveQuotes(s.market, _net, inst);
+      if (mounted && q.isNotEmpty) s.quotes.value = {...s.quotes.value, ...q};
+    } catch (_) {
+      // Live prices are a nicety; the refresher still runs.
+    }
+  }
+
+  Future<void> _startBackground() async {
+    _live();
+    // First launch only: the tour (with the demo option) before anything else.
+    if (await storage.read(key: tourDoneKey) == null && mounted) {
+      await Navigator.push(context, MaterialPageRoute(builder: (_) => TourScreen(session: s)));
+      await storage.write(key: tourDoneKey, value: '1');
+    }
+    try {
+      await initBackground();
+      if (await storage.read(key: 'notif_asked') == null) {
+        await storage.write(key: 'notif_asked', value: '1');
+        await requestNotificationPermission();
+      }
+    } catch (_) {
+      // No platform (tests) or WorkManager unavailable: the app still refreshes on open.
+    }
   }
 
   void _set(VoidCallback f) {
@@ -116,6 +209,7 @@ class _ShellState extends State<Shell> with WidgetsBindingObserver {
     book.seal();
     final p = Portfolio.compute(txs: _txs!, instruments: _inst!, prefs: _prefs, goals: _goals, sips: _sips, book: book);
     s.portfolio.value = p;
+    _saveTracked();
     final sug = sellRules(p: p, theses: s.theses.value, filings: s.filings.value, satelliteTargetPct: _satTarget);
     s.suggestions.value = sug;
     _storeSignals(sug);
@@ -123,6 +217,7 @@ class _ShellState extends State<Shell> with WidgetsBindingObserver {
       _refreshedOnce = true;
       _ripeCheck(p);
       _refresh();
+      _loadIdeas(); // again, now that holdings are known (ideas exclude what you own)
     }
   }
 
@@ -166,13 +261,18 @@ class _ShellState extends State<Shell> with WidgetsBindingObserver {
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
-    if (state == AppLifecycleState.resumed) _refresh();
+    _resumed = state == AppLifecycleState.resumed;
+    if (_resumed) {
+      _refresh();
+      _live();
+    }
   }
 
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
     _debounce?.cancel();
+    _liveTimer?.cancel();
     for (final x in _subs) {
       x.cancel();
     }

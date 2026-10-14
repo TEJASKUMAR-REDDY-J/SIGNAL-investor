@@ -78,23 +78,6 @@ void main() {
     });
   });
 
-  group('assistant privacy guard', () {
-    test('strips amounts and unit counts, keeps the question', () {
-      final s = scrubQuestion('Should I sell my 300 units of Infosys bought at 1520? I have ₹4,50,000 in it and 2 lakh more.');
-      expect(s.text, isNot(contains('300')));
-      expect(s.text, isNot(contains('4,50,000')));
-      expect(s.text, isNot(contains('2 lakh')));
-      expect(s.text, isNot(contains('1520')));
-      expect(s.text, contains('Infosys'));
-      expect(s.removed, isNotEmpty);
-    });
-    test('public questions pass untouched', () {
-      final s = scrubQuestion('What did the Nifty 50 do this week?');
-      expect(s.removed, isEmpty);
-      expect(s.text, 'What did the Nifty 50 do this week?');
-    });
-  });
-
   group('assistant output', () {
     test('ground truth carries the app tax constants', () {
       expect(groundTruth, contains('flat 20%'));

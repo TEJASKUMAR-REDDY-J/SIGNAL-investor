@@ -11,6 +11,7 @@ import 'package:signal_investor/engine/calendar.dart';
 import 'package:signal_investor/engine/lots.dart';
 import 'package:signal_investor/engine/portfolio.dart';
 import 'package:signal_investor/main.dart';
+import 'package:signal_investor/ui/holding.dart';
 import 'package:signal_investor/ui/sandbox.dart';
 import 'package:signal_investor/ui/settings.dart';
 import 'package:signal_investor/ui/shell.dart';
@@ -51,7 +52,7 @@ void main() {
   late Session session;
 
   setUp(() {
-    FlutterSecureStorage.setMockInitialValues({});
+    FlutterSecureStorage.setMockInitialValues({'tour_done': '1', 'notif_asked': '1'});
     db = ProfileDb(NativeDatabase.memory());
     market = MarketDb(NativeDatabase.memory());
     session = Session(const Profile('p1', 'Profile 1'), db, market, ValueNotifier<Portfolio?>(null), () {});
@@ -82,7 +83,7 @@ void main() {
     tall(t);
     await t.pumpWidget(app());
     await settle(t);
-    expect(find.text('Nothing here yet'), findsOneWidget);
+    expect(find.text('Start here'), findsOneWidget);
 
     await t.tap(find.text('Add'));
     await settle(t);
@@ -100,8 +101,8 @@ void main() {
     expect(inst.yahooTicker, 'RELIANCE.NS');
     expect(find.text('Reliance Industries'), findsOneWidget);
 
-    await t.enterText(find.widgetWithText(TextFormField, 'Units'), '10');
-    await t.enterText(find.widgetWithText(TextFormField, 'Price / NAV per unit'), '2500.5');
+    await t.enterText(find.widgetWithText(TextFormField, 'Quantity (shares)'), '10');
+    await t.enterText(find.widgetWithText(TextFormField, 'Price per share'), '2500.5');
     await t.enterText(find.widgetWithText(TextFormField, 'Charges (optional)'), '20');
     await settle(t, 3);
     expect(find.text('₹25,005.00'), findsOneWidget);
@@ -118,12 +119,12 @@ void main() {
     expect(find.textContaining(prettyDay(lt)), findsOneWidget);
 
     // Oversell rejected.
-    await t.tap(find.text('Add').last);
+    await t.tap(find.text('I bought this'));
     await settle(t);
     await t.tap(find.widgetWithText(ChoiceChip, 'Sell'));
     await settle(t, 3);
-    await t.enterText(find.widgetWithText(TextFormField, 'Units'), '15');
-    await t.enterText(find.widgetWithText(TextFormField, 'Price / NAV per unit'), '2600');
+    await t.enterText(find.widgetWithText(TextFormField, 'Quantity (shares)'), '15');
+    await t.enterText(find.widgetWithText(TextFormField, 'Price per share'), '2600');
     await t.tap(find.text('Save'));
     await settle(t);
     expect(find.textContaining('exceed the units held'), findsOneWidget);
@@ -132,24 +133,30 @@ void main() {
     await settle(t);
 
     // Edit (tap history row) to 12 units.
+    await t.ensureVisible(find.textContaining('Buy  10'));
     await t.tap(find.textContaining('Buy  10'));
     await settle(t);
-    await t.enterText(find.widgetWithText(TextFormField, 'Units'), '12');
+    await t.enterText(find.widgetWithText(TextFormField, 'Quantity (shares)'), '12');
     await t.tap(find.text('Save changes'));
     await settle(t);
     expect(find.textContaining('12 units'), findsWidgets);
 
     // Delete shows Undo (no "are you sure?"); Undo restores the same row.
+    await t.drag(find.byType(ListView).first, const Offset(0, -3000));
+    await settle(t);
     await t.tap(find.byTooltip('Delete'));
     await settle(t);
-    expect(find.text('No open lots.'), findsOneWidget);
+    expect(find.text('History'), findsNothing); // nothing owned: back to the plain stock page
+    expect(find.text('I bought this'), findsOneWidget);
     await t.tap(find.text('Undo'));
     await settle(t);
-    expect(find.text('No open lots.'), findsNothing);
+    expect(find.text('History'), findsOneWidget);
     expect(await q(t, () => db.select(db.transactions).get()), hasLength(1));
+    await t.drag(find.byType(ListView).first, const Offset(0, -3000));
+    await settle(t);
     await t.tap(find.byTooltip('Delete'));
     await settle(t, 120); // let the snackbar expire
-    expect(find.text('No open lots.'), findsOneWidget);
+    expect(find.text('History'), findsNothing);
     final audit = await q(t, () => db.select(db.auditLog).get());
     expect(audit.where((a) => a.detail.startsWith('transaction')).map((a) => a.action),
         ['insert', 'edit', 'delete', 'restore', 'delete']);
@@ -176,6 +183,8 @@ void main() {
     expect(find.text('LTCG'), findsOneWidget);
     expect(find.textContaining('₹150'), findsWidgets);
     // Delete the buy (last history row).
+    await t.drag(find.byType(ListView).first, const Offset(0, -3000));
+    await settle(t);
     await t.tap(find.byTooltip('Delete').last);
     await settle(t);
     expect(find.textContaining('Cannot delete'), findsOneWidget);
@@ -193,6 +202,8 @@ void main() {
     await t.pumpWidget(app());
     await settle(t);
     final tile = find.byKey(const ValueKey('tile-alloc'));
+    await t.ensureVisible(tile);
+    await settle(t, 4);
     final w1 = t.getSize(tile).width;
     await t.longPress(find.text('Allocation'));
     await settle(t);
@@ -299,6 +310,48 @@ void main() {
     await settle(t, 40);
     expect(find.text('Buy at latest price'), findsNothing);
     expect(await q(t, () => db.select(db.paperTrades).get()), hasLength(1));
+    await close(t);
+  });
+
+  testWidgets('empty home guides: start steps, search, ask, pulse, ideas, watchlist', (t) async {
+    tall(t);
+    await t.pumpWidget(app());
+    await settle(t, 40);
+    for (final s in ['Start here', 'Search any stock or mutual fund', 'News pulse', 'Top ideas', 'Watchlist', '1-minute tour']) {
+      expect(find.textContaining(s), findsWidgets, reason: s);
+    }
+    expect(find.textContaining('Ask SIGNAL'), findsWidgets);
+    await t.tap(find.byTooltip('How to use SIGNAL'));
+    await settle(t);
+    expect(find.text('How do I add a stock or fund I bought?'), findsOneWidget);
+    await close(t);
+  });
+
+  testWidgets('unowned stock page: price, watch, "I bought this" fills the price', (t) async {
+    tall(t);
+    final id = await stock(t, 'Tata Consultancy', 'TCS');
+    final today = istToday(), prev = nse.onOrBefore(today.subtract(const Duration(days: 1)));
+    await q(t, () => market.putPrices(id, 'yahoo', [(fmtDay(prev), 24000000), (fmtDay(today), 25000000)]));
+    await t.pumpWidget(app());
+    await settle(t, 40);
+    t.state<NavigatorState>(find.byType(Navigator).first)
+        .push(MaterialPageRoute(builder: (_) => HoldingScreen(session: session, instrumentId: id)));
+    await settle(t, 40);
+    expect(find.text('₹2,500.00'), findsWidgets);
+    expect(find.textContaining('+4.17%'), findsOneWidget);
+    expect(find.text('History'), findsNothing);
+    await t.tap(find.text('Watch'));
+    await settle(t);
+    expect(find.text('Watching'), findsOneWidget);
+    expect((await q(t, () => db.select(db.watchlist).get())).single.instrumentId, id);
+    await t.tap(find.text('I bought this'));
+    await settle(t, 60);
+    expect(find.widgetWithText(TextFormField, 'Price per share'), findsOneWidget);
+    expect(find.text('2500'), findsOneWidget); // filled in
+    expect(find.textContaining('filled in'), findsOneWidget);
+    await t.enterText(find.widgetWithText(TextFormField, 'Quantity (shares)'), '4');
+    await settle(t, 3);
+    expect(find.text('₹10,000.00'), findsOneWidget);
     await close(t);
   });
 

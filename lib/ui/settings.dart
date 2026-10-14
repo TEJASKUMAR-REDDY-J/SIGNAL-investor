@@ -5,6 +5,7 @@ import '../engine/calendar.dart';
 import '../engine/money.dart';
 import '../engine/tax.dart';
 import '../db/open_db.dart';
+import '../pipeline/background.dart';
 import '../sources/groq.dart';
 import 'ask.dart';
 import 'theme.dart';
@@ -105,6 +106,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
               ),
             ),
           ),
+          const SectionHeader('News pulse'),
+          const _NewsCard(),
           const SectionHeader('AI (Groq)'),
           _GroqCard(session: widget.session),
           const SectionHeader('Look back'),
@@ -309,4 +312,61 @@ class _GroqCardState extends State<_GroqCard> {
       ),
     );
   }
+}
+
+/// Daily news job: on/off for the notification, and a manual run.
+class _NewsCard extends StatefulWidget {
+  const _NewsCard();
+  @override
+  State<_NewsCard> createState() => _NewsCardState();
+}
+
+class _NewsCardState extends State<_NewsCard> {
+  bool _on = true, _busy = false;
+
+  @override
+  void initState() {
+    super.initState();
+    storage.read(key: digestOnKey).then((v) {
+      if (mounted) setState(() => _on = v != '0');
+    });
+  }
+
+  Future<void> _runNow() async {
+    setState(() => _busy = true);
+    try {
+      final line = await runDaily();
+      if (mounted) snack(context, line ?? 'Checked. Nothing new labelled for the companies you follow.');
+    } catch (e) {
+      if (mounted) snack(context, 'Could not check the news: $e');
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) => Card(
+        child: Column(children: [
+          SwitchListTile(
+            secondary: const Icon(Icons.notifications_outlined),
+            title: const Text('Twice-daily summary'),
+            subtitle: const Text("8 AM and 4 PM: news and NSE filings for what you hold, watch and the Advisor's ideas. "
+                'One notification, only when there is something new.'),
+            value: _on,
+            onChanged: (v) async {
+              setState(() => _on = v);
+              await storage.write(key: digestOnKey, value: v ? '1' : '0');
+              if (v) await requestNotificationPermission().catchError((_) => false);
+            },
+          ),
+          ListTile(
+            leading: _busy
+                ? const SizedBox(width: 24, height: 24, child: CircularProgressIndicator(strokeWidth: 2.5))
+                : const Icon(Icons.newspaper_outlined),
+            title: const Text('Check the news now'),
+            subtitle: const Text('Runs the same job immediately (about a minute)'),
+            onTap: _busy ? null : _runNow,
+          ),
+        ]),
+      );
 }

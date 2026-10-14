@@ -14,6 +14,12 @@ import '../engine/portfolio.dart';
 import '../engine/sell_rules.dart';
 import '../engine/valuation.dart';
 import '../sources/mfapi.dart';
+import '../pipeline/instruments.dart';
+import '../pipeline/live.dart';
+import 'add_transaction.dart';
+import 'advisor.dart';
+import 'ask.dart';
+import 'guide.dart';
 import 'holding.dart';
 import 'logo.dart';
 import 'news.dart';
@@ -27,6 +33,9 @@ import 'wrapped.dart';
 /// Tile id -> title. Order here is the default order.
 const tileTitles = {
   'donext': 'Do next',
+  'pulse': 'News pulse',
+  'ideas': 'Top ideas',
+  'watch': 'Watchlist',
   'growth': 'You vs the index',
   'alloc': 'Allocation',
   'tax': 'Tax this FY',
@@ -41,6 +50,9 @@ const tileTitles = {
 const _defaultHidden = {'longterm', 'sips', 'goals', 'market'};
 const _defaultSize = {
   'donext': 3,
+  'pulse': 3,
+  'ideas': 3,
+  'watch': 3,
   'growth': 3,
   'alloc': 1,
   'tax': 1,
@@ -266,6 +278,11 @@ class _DashboardState extends State<Dashboard> {
                     ),
                   ]),
                   actions: [
+                    IconButton(
+                      tooltip: 'How to use SIGNAL',
+                      icon: const Icon(Icons.help_outline),
+                      onPressed: () => showHelp(context, s),
+                    ),
                     ValueListenableBuilder(
                       valueListenable: hideMoney,
                       builder: (context, hide, _) => IconButton(
@@ -339,7 +356,20 @@ class _DashboardState extends State<Dashboard> {
   Widget _body(BuildContext context, Portfolio p) {
     final cs = Theme.of(context).colorScheme;
     final today = p.today;
+    final demo = p.txs.any((t) => t.note == demoNote);
     final children = <Widget>[
+      _IndexStrip(session: s, p: p),
+      _SearchAndAsk(session: s),
+      if (demo)
+        Padding(
+          padding: const EdgeInsets.only(bottom: 10),
+          child: Notice(
+            icon: Icons.toys_outlined,
+            color: cs.primary,
+            text: 'You are exploring a demo portfolio with real prices. Tap to clear it and add your own.',
+            onTap: () => clearDemo(context, s),
+          ),
+        ),
       if (p.txs.isNotEmpty) _Summary(p: p),
       _status(context, p),
     ];
@@ -409,15 +439,12 @@ class _DashboardState extends State<Dashboard> {
     }
 
     if (p.txs.isEmpty) {
-      return Column(children: [
+      return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
         ...children,
-        const EmptyState(
-          icon: Icons.spa_outlined,
-          title: 'Nothing here yet',
-          message: 'The best day to start a SIP was years ago. The second best is the 5th of next month. '
-              'Tap Add to record your first one.',
-        ),
-        _tiles(context, p, only: const {'market'}),
+        _GettingStarted(session: s, onOpenTab: widget.onOpenTab),
+        const SizedBox(height: 12),
+        _tiles(context, p, only: const {'pulse', 'ideas', 'watch', 'market'}),
+        const Fine('Prices come from public sources and run a few minutes behind the exchange. Not investment or tax advice.'),
       ]);
     }
     return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
@@ -475,6 +502,9 @@ class _Tile extends StatelessWidget {
     final cs = Theme.of(context).colorScheme;
     final body = switch (id) {
       'donext' => _doNext(context),
+      'pulse' => _pulse(context),
+      'ideas' => _ideas(context),
+      'watch' => _watchTile(context),
       'alloc' => _alloc(context),
       'growth' => _growth(context),
       'tax' => _tax(context),
@@ -496,6 +526,174 @@ class _Tile extends StatelessWidget {
       ),
     );
   }
+
+  int get _rows => size == 1 ? 2 : (size == 2 ? 4 : 6);
+
+  // ---- News pulse: AI-labelled headlines summed per company, last 7 days ----
+  Widget _pulse(BuildContext context) => ValueListenableBuilder(
+        valueListenable: session.news,
+        builder: (context, scores, _) {
+          final cs = Theme.of(context).colorScheme;
+          if (scores.isEmpty) {
+            return Text(
+                'News is checked at 8 AM and 4 PM for what you hold, watch and the Advisor\'s ideas. Each headline about a '
+                'company scores +1 or -1. Nothing labelled in the last 7 days yet.',
+                style: TextStyle(color: cs.onSurfaceVariant, fontSize: 13));
+          }
+          return Column(children: [
+            for (final n in scores.take(_rows))
+              InkWell(
+                onTap: () => _open(context, n.instrumentId),
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 6),
+                  child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                    Container(
+                      width: 52,
+                      padding: const EdgeInsets.symmetric(vertical: 4),
+                      alignment: Alignment.center,
+                      decoration: BoxDecoration(
+                          color: (n.points >= 0 ? cs.gain : cs.loss).withValues(alpha: 0.12), borderRadius: BorderRadius.circular(8)),
+                      child: Text('${n.points > 0 ? '+' : ''}${n.points}',
+                          style: TextStyle(fontWeight: FontWeight.w800, color: n.points >= 0 ? cs.gain : cs.loss)),
+                    ),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                        Text(p.instruments[n.instrumentId]?.name ?? '', maxLines: 1, overflow: TextOverflow.ellipsis,
+                            style: const TextStyle(fontWeight: FontWeight.w600)),
+                        Text('${n.positive} good · ${n.negative} bad · ${n.latest?.title ?? ''}',
+                            maxLines: size >= 3 ? 2 : 1, overflow: TextOverflow.ellipsis,
+                            style: TextStyle(fontSize: 12.5, color: cs.onSurfaceVariant)),
+                      ]),
+                    ),
+                  ]),
+                ),
+              ),
+            if (size >= 2) const Fine('Labels are AI guesses from headlines only. Read the article before acting.'),
+          ]);
+        },
+      );
+
+  // ---- Top ideas: rule-ranked stocks and funds ----
+  Widget _ideas(BuildContext context) => AnimatedBuilder(
+        animation: Listenable.merge([session.stockIdeas, session.fundIdeas]),
+        builder: (context, _) {
+          final cs = Theme.of(context).colorScheme;
+          final stocks = session.stockIdeas.value ?? const [];
+          final funds = session.fundIdeas.value ?? const {};
+          if (stocks.isEmpty && funds.isEmpty) {
+            return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              Text('The Advisor ranks every NIFTY 500 company and the main mutual fund categories with fixed rules. '
+                  'Run it once; after that it updates itself.',
+                  style: TextStyle(color: cs.onSurfaceVariant, fontSize: 13)),
+              const SizedBox(height: 8),
+              FilledButton.tonalIcon(
+                onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (_) => AdvisorScreen(session: session))),
+                icon: const Icon(Icons.emoji_events_outlined),
+                label: const Text('Open the Advisor'),
+              ),
+            ]);
+          }
+          final topFunds = [
+            for (final c in const ['Flexi Cap Fund', 'Large Cap Fund', 'Mid Cap Fund'])
+              if (funds[c]?.isNotEmpty ?? false) (c.replaceAll(' Fund', ''), funds[c]!.first),
+          ];
+          return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            for (final (i, c) in stocks.take(size == 1 ? 2 : (size == 2 ? 3 : 5)).indexed)
+              InkWell(
+                onTap: () async {
+                  final id = await ensureStock(session.market, c.input.symbol, c.input.name);
+                  if (context.mounted) _open(context, id);
+                },
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 6),
+                  child: Row(children: [
+                    Text('${i + 1}', style: TextStyle(fontWeight: FontWeight.w800, color: cs.primary)),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                        Text(c.input.name, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontWeight: FontWeight.w600)),
+                        Text(c.reasons.length > 1 ? c.reasons[1] : c.reasons.first,
+                            maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(fontSize: 12.5, color: cs.onSurfaceVariant)),
+                      ]),
+                    ),
+                    Text('${(c.score * 100).round()}', style: TextStyle(fontWeight: FontWeight.w700, color: cs.primary)),
+                  ]),
+                ),
+              ),
+            if (size >= 2 && topFunds.isNotEmpty) ...[
+              const SizedBox(height: 6),
+              Text('Funds', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: cs.onSurfaceVariant)),
+              for (final (cat, f) in topFunds)
+                InkWell(
+                  onTap: () async {
+                    final id = await ensureFund(session.market, f.m.code, f.m.name);
+                    if (context.mounted) _open(context, id);
+                  },
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(vertical: 5),
+                    child: Row(children: [
+                      Icon(Icons.pie_chart_outline, size: 18, color: cs.primary),
+                      const SizedBox(width: 10),
+                      Expanded(
+                          child: Text('$cat: ${f.m.name}', maxLines: 1, overflow: TextOverflow.ellipsis)),
+                      Text(f.m.cagr3 == null ? '' : '${(f.m.cagr3! * 100).toStringAsFixed(1)}%/yr',
+                          style: const TextStyle(fontSize: 12.5, fontWeight: FontWeight.w600)),
+                    ]),
+                  ),
+                ),
+            ],
+            Align(
+              alignment: Alignment.centerRight,
+              child: TextButton(
+                onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (_) => AdvisorScreen(session: session))),
+                child: const Text('See all, with reasons'),
+              ),
+            ),
+          ]);
+        },
+      );
+
+  // ---- Watchlist: followed without owning ----
+  Widget _watchTile(BuildContext context) => AnimatedBuilder(
+        animation: Listenable.merge([session.watch, session.quotes]),
+        builder: (context, _) {
+          final cs = Theme.of(context).colorScheme;
+          final ids = session.watch.value.toList();
+          if (ids.isEmpty) {
+            return Text('Tap Watch on any stock or fund page to follow its price and news here.',
+                style: TextStyle(color: cs.onSurfaceVariant, fontSize: 13));
+          }
+          return Column(children: [
+            for (final id in ids.take(_rows + 2))
+              InkWell(
+                onTap: () => _open(context, id),
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 6),
+                  child: Builder(builder: (context) {
+                    final ser = p.book.series(id);
+                    final q = session.quotes.value[id];
+                    final price = q?.priceE4 ?? ser.lastOrNull?.closeE4;
+                    final prev = q?.prevCloseE4 ?? (ser.length >= 2 ? ser[ser.length - 2].closeE4 : null);
+                    final bps = price == null || prev == null || prev == 0 ? null : ((price - prev) * 10000 / prev).round();
+                    return Row(children: [
+                      Icon(p.instruments[id]?.kind == 'mf' ? Icons.pie_chart_outline : Icons.show_chart, size: 18, color: cs.primary),
+                      const SizedBox(width: 10),
+                      Expanded(child: Text(p.instruments[id]?.name ?? '', maxLines: 1, overflow: TextOverflow.ellipsis)),
+                      if (price != null) Text(priceLabel(price), style: const TextStyle(fontFeatures: tabular)),
+                      if (bps != null)
+                        SizedBox(
+                          width: 64,
+                          child: Text('${bps >= 0 ? '+' : ''}${(bps / 100).toStringAsFixed(2)}%',
+                              textAlign: TextAlign.right, style: TextStyle(color: cs.signed(bps), fontWeight: FontWeight.w600)),
+                        ),
+                    ]);
+                  }),
+                ),
+              ),
+          ]);
+        },
+      );
 
   // ---- Do next: one inbox of actions, from rules and dates ----
   Widget _doNext(BuildContext context) {
@@ -1050,4 +1248,174 @@ class _SummaryState extends State<_Summary> {
       ),
     );
   }
+}
+
+/// NIFTY 50, SENSEX and NIFTY BANK with today's move (a few minutes delayed).
+class _IndexStrip extends StatelessWidget {
+  final Session session;
+  final Portfolio p;
+  const _IndexStrip({required this.session, required this.p});
+
+  @override
+  Widget build(BuildContext context) => ValueListenableBuilder(
+        valueListenable: session.quotes,
+        builder: (context, quotes, _) {
+          final cs = Theme.of(context).colorScheme;
+          final order = indexTickers.keys.toList();
+          final idx = [for (final i in p.instruments.values) if (i.kind == 'index' && order.contains(i.yahooTicker)) i]
+            ..sort((a, b) => order.indexOf(a.yahooTicker!).compareTo(order.indexOf(b.yahooTicker!)));
+          if (idx.isEmpty) return const SizedBox(height: 4);
+          return Padding(
+            padding: const EdgeInsets.only(bottom: 10),
+            child: Row(children: [
+              for (final (k, i) in idx.indexed) ...[
+                if (k > 0) const SizedBox(width: 8),
+                Expanded(
+                  child: Builder(builder: (context) {
+                    final q = quotes[i.id];
+                    final ser = p.book.series(i.id);
+                    final price = q?.priceE4 ?? ser.lastOrNull?.closeE4;
+                    final prev = q?.prevCloseE4 ?? (ser.length >= 2 ? ser[ser.length - 2].closeE4 : null);
+                    final bps = price == null || prev == null || prev == 0 ? null : ((price - prev) * 10000 / prev).round();
+                    return Container(
+                      padding: const EdgeInsets.fromLTRB(10, 8, 10, 8),
+                      decoration: BoxDecoration(
+                          color: Theme.of(context).cardTheme.color ?? cs.surfaceContainerLow, borderRadius: BorderRadius.circular(12)),
+                      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                        Text(i.name,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: cs.onSurfaceVariant)),
+                        FittedBox(
+                          fit: BoxFit.scaleDown,
+                          alignment: Alignment.centerLeft,
+                          child: Text(price == null ? '—' : formatScaled(price ~/ 100, 2, minDecimals: 2),
+                              style: const TextStyle(fontWeight: FontWeight.w700, fontFeatures: tabular)),
+                        ),
+                        Text(bps == null ? ' ' : '${bps >= 0 ? '+' : ''}${(bps / 100).toStringAsFixed(2)}%',
+                            style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: bps == null ? null : cs.signed(bps))),
+                      ]),
+                    );
+                  }),
+                ),
+              ],
+            ]),
+          );
+        },
+      );
+}
+
+/// Search any stock or fund, or ask the AI: the two ways in.
+class _SearchAndAsk extends StatelessWidget {
+  final Session session;
+  const _SearchAndAsk({required this.session});
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    Widget pill(IconData icon, String text, VoidCallback onTap, {Color? color}) => Material(
+          color: color ?? cs.surfaceContainerHigh,
+          borderRadius: BorderRadius.circular(28),
+          child: InkWell(
+            borderRadius: BorderRadius.circular(28),
+            onTap: onTap,
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 13),
+              child: Row(children: [
+                Icon(icon, color: cs.primary),
+                const SizedBox(width: 12),
+                Expanded(
+                    child: Text(text, maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(color: cs.onSurfaceVariant))),
+              ]),
+            ),
+          ),
+        );
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 12),
+      child: Column(children: [
+        pill(Icons.search, 'Search any stock or mutual fund', () => openSearch(context, session)),
+        const SizedBox(height: 8),
+        pill(Icons.auto_awesome, 'Ask SIGNAL: "which fund suits me?", "how do I start?"',
+            () => Navigator.push(context, MaterialPageRoute(builder: (_) => AskScreen(session: session))),
+            color: cs.primary.withValues(alpha: 0.08)),
+      ]),
+    );
+  }
+}
+
+Future<void> openSearch(BuildContext context, Session s) async {
+  final id = await showModalBottomSheet<int>(
+    context: context,
+    isScrollControlled: true,
+    builder: (_) => InstrumentPicker(market: s.market),
+  );
+  if (id != null && context.mounted) {
+    Navigator.push(context, MaterialPageRoute(builder: (_) => HoldingScreen(session: s, instrumentId: id)));
+  }
+}
+
+/// Shown until the first investment is recorded: what to do, in order.
+class _GettingStarted extends StatelessWidget {
+  final Session session;
+  final ValueChanged<int> onOpenTab;
+  const _GettingStarted({required this.session, required this.onOpenTab});
+
+  @override
+  Widget build(BuildContext context) => AnimatedBuilder(
+        animation: Listenable.merge([session.watch, session.stockIdeas]),
+        builder: (context, _) {
+          final cs = Theme.of(context).colorScheme;
+          final steps = <(bool, IconData, String, String, VoidCallback)>[
+            (session.watch.value.isNotEmpty, Icons.search, 'Find a stock or fund', 'Search, open it, tap Watch to follow it.',
+                () => openSearch(context, session)),
+            (false, Icons.add_shopping_cart, 'Record what you own', 'Open it and tap "I bought this": the price fills in.',
+                () => Navigator.push(context, MaterialPageRoute(builder: (_) => AddTransaction(session: session)))),
+            (
+              (session.stockIdeas.value ?? const []).isNotEmpty,
+              Icons.emoji_events_outlined,
+              "See the Advisor's ideas",
+              'Top-ranked stocks and funds, with reasons.',
+              () => Navigator.push(context, MaterialPageRoute(builder: (_) => AdvisorScreen(session: session))),
+            ),
+            (false, Icons.auto_awesome, 'Ask SIGNAL anything', 'How the app works, a fund, tax, your plan.',
+                () => Navigator.push(context, MaterialPageRoute(builder: (_) => AskScreen(session: session)))),
+          ];
+          return Card(
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
+              child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                Text('Start here', style: Theme.of(context).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w700)),
+                const SizedBox(height: 4),
+                Text('Four steps. The app never places orders: you buy in your broker app and record it here.',
+                    style: TextStyle(color: cs.onSurfaceVariant, fontSize: 13)),
+                const SizedBox(height: 6),
+                for (final (i, (done, icon, title, sub, tap)) in steps.indexed)
+                  ListTile(
+                    contentPadding: EdgeInsets.zero,
+                    leading: CircleAvatar(
+                      backgroundColor: done ? cs.gain.withValues(alpha: 0.15) : cs.primaryContainer,
+                      child: done ? Icon(Icons.check, color: cs.gain) : Text('${i + 1}', style: TextStyle(color: cs.onPrimaryContainer)),
+                    ),
+                    title: Text(title, style: const TextStyle(fontWeight: FontWeight.w600)),
+                    subtitle: Text(sub),
+                    trailing: Icon(icon, color: cs.primary),
+                    onTap: tap,
+                  ),
+                Wrap(spacing: 8, children: [
+                  TextButton.icon(
+                    onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (_) => TourScreen(session: session))),
+                    icon: const Icon(Icons.play_circle_outline),
+                    label: const Text('1-minute tour'),
+                  ),
+                  TextButton.icon(
+                    onPressed: () => startDemo(context, session),
+                    icon: const Icon(Icons.toys_outlined),
+                    label: const Text('Try a demo portfolio'),
+                  ),
+                ]),
+              ]),
+            ),
+          );
+        },
+      );
 }

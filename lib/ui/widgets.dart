@@ -7,8 +7,12 @@ import '../db/open_db.dart';
 import '../engine/money.dart';
 import '../engine/lots.dart';
 import '../engine/portfolio.dart';
+import '../engine/fund_rank.dart';
+import '../engine/news_score.dart';
+import '../engine/scoring.dart';
 import '../engine/sell_rules.dart';
 import '../pipeline/refresh.dart';
+import '../sources/yahoo.dart';
 import 'theme.dart';
 
 /// Everything a signed-in screen needs. One portfolio, computed once per change.
@@ -27,7 +31,17 @@ class Session {
   final filings = ValueNotifier<Map<int, List<Filing>>>(const {});
   /// Lots that turned long-term since the last visit: (holding name, lot).
   final ripened = ValueNotifier<List<(String, Lot)>>(const []);
+  /// Live quotes (delayed a few minutes) by instrument id: indices, holdings, watchlist.
+  final quotes = ValueNotifier<Map<int, Quote>>(const {});
+  final watch = ValueNotifier<Set<int>>(const {});
+  /// Advisor output from the cache; null until first loaded.
+  final stockIdeas = ValueNotifier<List<Candidate>?>(null);
+  final fundIdeas = ValueNotifier<Map<String, List<FundIdea>>?>(null);
+  /// 7-day news points for every tracked company, strongest first.
+  final news = ValueNotifier<List<NewsScore>>(const []);
   Future<void> Function({bool force})? refresh;
+  /// Reloads advisor ideas from the cache (after a scan).
+  Future<void> Function()? reloadIdeas;
   Session(this.profile, this.db, this.market, this.portfolio, this.lock);
 }
 

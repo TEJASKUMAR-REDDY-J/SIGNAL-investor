@@ -1,23 +1,15 @@
-import 'dart:convert';
 
-import 'package:drift/drift.dart' show BooleanExpressionOperators, Value;
 import 'package:fl_chart/fl_chart.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
-import '../db/db.dart';
 import '../engine/lots.dart';
 import '../engine/money.dart';
-import '../engine/portfolio.dart';
-import '../engine/scan_config.dart';
-import '../engine/scoring.dart';
 import '../engine/time_machine.dart';
 import '../engine/valuation.dart';
-import '../pipeline/scan.dart';
-import '../sources/net.dart';
+import 'advisor.dart';
 import 'ask.dart';
 import 'sandbox.dart';
-import 'theme.dart';
 import 'widgets.dart';
 
 const _netChannel = MethodChannel('signal/net');
@@ -66,170 +58,15 @@ class LabTab extends StatelessWidget {
               () => SandboxScreen(session: session)),
           card(Icons.history_toggle_off, 'Time machine', 'What a SIP or lump sum would have done, on real history.',
               () => TimeMachineScreen(session: session)),
-          card(Icons.radar, 'Weekly scan', 'NIFTY 500 (includes mid and small caps), ranked by quality, value and momentum.',
-              () => ScanScreen(session: session)),
-          card(Icons.auto_awesome, 'Ask', 'An AI explainer for rules, tax and public news. Never decides for you.',
+          card(Icons.emoji_events_outlined, 'Advisor', 'Best-ranked NIFTY 500 stocks and mutual funds by category, with reasons.',
+              () => AdvisorScreen(session: session)),
+          card(Icons.auto_awesome, 'Ask SIGNAL', 'Your AI guide: the app, your portfolio, any company, tax. Explains; you decide.',
               () => AskScreen(session: session)),
           const Fine('Everything here is for learning. Ideas from the scan are starting points to research, not picks. '
               'Most active fund managers trail the index over 10 years.'),
         ]),
       ),
     ]);
-  }
-}
-
-// ---------------- Weekly scan ----------------
-
-class ScanScreen extends StatefulWidget {
-  final Session session;
-  const ScanScreen({super.key, required this.session});
-  @override
-  State<ScanScreen> createState() => _ScanScreenState();
-}
-
-class _ScanScreenState extends State<ScanScreen> {
-  CancelToken? _cancel;
-  int _done = 0, _total = 0;
-  String _what = '';
-  List<Candidate>? _result;
-  String? _error;
-  final _net = Net();
-
-  Future<void> _start() async {
-    if (!await onWifi()) {
-      if (mounted) snack(context, 'The scan runs on Wi-Fi only (about 600 small requests).');
-      return;
-    }
-    final c = CancelToken();
-    setState(() {
-      _cancel = c;
-      _error = null;
-      _result = null;
-    });
-    final held = <String>{
-      for (final h in widget.session.portfolio.value?.holdings ?? const <Holding>[]) h.instrument?.nseSymbol ?? '',
-    };
-    try {
-      final r = await runScan(widget.session.market, _net,
-          cancel: c,
-          exclude: held,
-          onProgress: (d, t, w) {
-            if (mounted) setState(() => (_done = d, _total = t, _what = w));
-          });
-      await _log(r);
-      if (mounted) setState(() => _result = r);
-    } on FetchError catch (e) {
-      if (mounted) setState(() => _error = e.message);
-    } catch (e) {
-      if (mounted) setState(() => _error = 'Scan stopped: $e');
-    } finally {
-      if (mounted) setState(() => _cancel = null);
-    }
-  }
-
-  Future<int> _instrumentFor(Candidate c) async {
-    final m = widget.session.market;
-    final hit = await (m.select(m.instruments)..where((i) => i.nseSymbol.equals(c.input.symbol))).getSingleOrNull();
-    return hit?.id ??
-        await m.into(m.instruments).insert(InstrumentsCompanion.insert(
-            kind: 'stock', name: c.input.name, nseSymbol: Value(c.input.symbol), yahooTicker: Value('${c.input.symbol}.NS')));
-  }
-
-  /// Every candidate is a signal with inputs and rule version.
-  Future<void> _log(List<Candidate> r) async {
-    for (final c in r) {
-      await widget.session.db.upsertSignal(await _instrumentFor(c), buyCandidateRule, jsonEncode(c.inputs), scanRuleVersion);
-    }
-  }
-
-  Future<void> _act(Candidate c, String action) async {
-    final db = widget.session.db;
-    final id = await _instrumentFor(c);
-    final sig = await (db.select(db.signals)
-          ..where((s) => s.instrumentId.equals(id) & s.rule.equals(buyCandidateRule) & s.status.equals('open')))
-        .getSingleOrNull();
-    if (sig != null) await db.actOnSignal(sig.id, action);
-    if (!mounted) return;
-    if (action == 'sandbox') {
-      Navigator.push(context, MaterialPageRoute(builder: (_) => SandboxScreen(session: widget.session, buyInstrumentId: id)));
-    } else {
-      setState(() => _result = [..._result!]..remove(c));
-    }
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final cs = Theme.of(context).colorScheme;
-    final running = _cancel != null;
-    return Scaffold(
-      appBar: AppBar(title: const Text('Weekly scan')),
-      body: ListView(padding: const EdgeInsets.all(12), children: [
-        Card(
-          child: Padding(
-            padding: const EdgeInsets.all(16),
-            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-              const Text('How it works', style: TextStyle(fontWeight: FontWeight.w700)),
-              const SizedBox(height: 6),
-              Text(
-                'Filters NIFTY 500 on ROE ≥ ${(minRoe * 100).round()}%, debt ≤ ${(maxDebtToEquityPct / 100).toStringAsFixed(1)}x '
-                'equity, positive cash flow and size. Ranks by quality, price against its own 3-year average, and 12-1 month '
-                'momentum. Shows the top $topN you do not already own. Wi-Fi only; 1 second between requests.',
-                style: TextStyle(color: cs.onSurfaceVariant, height: 1.4),
-              ),
-              const SizedBox(height: 12),
-              if (running) ...[
-                LinearProgressIndicator(value: _total == 0 ? null : _done / _total),
-                const SizedBox(height: 6),
-                Text('$_done / $_total · $_what', style: const TextStyle(fontFeatures: tabular)),
-                const SizedBox(height: 8),
-                OutlinedButton(onPressed: () => _cancel!.cancelled = true, child: const Text('Cancel')),
-              ] else
-                FilledButton.icon(onPressed: _start, icon: const Icon(Icons.radar), label: const Text('Run scan')),
-              if (_error != null) Padding(padding: const EdgeInsets.only(top: 8), child: Notice(icon: Icons.error_outline, color: cs.loss, text: _error!)),
-            ]),
-          ),
-        ),
-        if (_result != null && _result!.isEmpty)
-          const EmptyState(icon: Icons.filter_alt_off, title: 'Nothing passed', message: 'No stock cleared every filter this time.'),
-        for (final (i, c) in (_result ?? const <Candidate>[]).indexed)
-          Padding(
-            padding: const EdgeInsets.only(top: 10),
-            child: Card(
-              child: Padding(
-                padding: const EdgeInsets.all(16),
-                child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                  Row(children: [
-                    CircleAvatar(radius: 14, child: Text('${i + 1}')),
-                    const SizedBox(width: 10),
-                    Expanded(
-                      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                        Text(c.input.name, style: const TextStyle(fontWeight: FontWeight.w700)),
-                        Text('${c.input.symbol} · ${c.input.industry}', style: TextStyle(fontSize: 12, color: cs.onSurfaceVariant)),
-                      ]),
-                    ),
-                    Text('${(c.score * 100).round()}', style: TextStyle(fontSize: 22, fontWeight: FontWeight.w800, color: cs.primary)),
-                  ]),
-                  const SizedBox(height: 10),
-                  for (final r in c.reasons) Text('• $r'),
-                  const SizedBox(height: 8),
-                  Text('What would break the case', style: TextStyle(fontSize: 12, color: cs.onSurfaceVariant)),
-                  for (final b in c.breaks) Text('• $b', style: TextStyle(color: cs.onSurfaceVariant)),
-                  const SizedBox(height: 6),
-                  Text('Data as of ${prettyDay(c.input.dataAsOf)}', style: TextStyle(fontSize: 11.5, color: cs.onSurfaceVariant)),
-                  const SizedBox(height: 8),
-                  Row(children: [
-                    FilledButton.tonalIcon(onPressed: () => _act(c, 'sandbox'), icon: const Icon(Icons.science_outlined), label: const Text('Try in sandbox')),
-                    const SizedBox(width: 8),
-                    TextButton(onPressed: () => _act(c, 'dismissed'), child: const Text('Dismiss')),
-                  ]),
-                ]),
-              ),
-            ),
-          ),
-        const Fine('Fundamentals and prices from Yahoo (unofficial). Promoter pledge data is not available from a free source, '
-            'so check it yourself. A ranking is not a recommendation.'),
-      ]),
-    );
   }
 }
 
