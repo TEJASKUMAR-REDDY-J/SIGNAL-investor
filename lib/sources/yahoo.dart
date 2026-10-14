@@ -22,7 +22,9 @@ List<(String, int)> parseYahooChart(String body) {
   if (ts is! List || closes is! List) return const [];
   final byDay = <String, int>{};
   for (var i = 0; i < ts.length && i < closes.length; i++) {
-    final c = doubleE4(closes[i]);
+    // Yahoo sends float closes (2309.1000976...): NSE prices move in paise, so round to 2 dp.
+    final raw = closes[i];
+    final c = raw is num && raw > 0 && raw.isFinite ? (raw * 100).round() * 100 : null;
     if (c == null || ts[i] is! int) continue;
     final ist = DateTime.fromMillisecondsSinceEpoch(ts[i] * 1000, isUtc: true)
         .add(const Duration(hours: 5, minutes: 30));

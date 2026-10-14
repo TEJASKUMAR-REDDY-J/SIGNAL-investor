@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 
 import '../db/db.dart';
 import '../engine/calendar.dart';
+
 import 'package:flutter/services.dart';
 
 import '../engine/lots.dart';
@@ -41,22 +42,21 @@ class _ShellState extends State<Shell> with WidgetsBindingObserver {
   int _satTarget = 25;
   late final _net = Net();
   Set<int> _paper = const {};
-  late final _refresher = Refresher(s.market, _net, extra: [
-    filingsStep(s.market, _net, _held),
-    newsStep(s.market, _net, _held, _groq),
-  ]);
+  late final _refresher = Refresher(
+    s.market,
+    _net,
+    extra: [filingsStep(s.market, _net, _held), newsStep(s.market, _net, _held, _groq)],
+  );
 
   /// Real holdings plus sandbox positions: everything whose prices we keep fresh.
-  Set<int> _held() => {
-        for (final h in s.portfolio.value?.holdings ?? const <Holding>[]) h.instrumentId,
-        ..._paper,
-      };
+  Set<int> _held() => {for (final h in s.portfolio.value?.holdings ?? const <Holding>[]) h.instrumentId, ..._paper};
 
   Future<(String, String)?> _groq() async {
     final key = await groqKeyFor(s.profile.id);
     if (key == null) return null;
     return (key, await s.db.setting('groq_tag_model') ?? defaultTagModel);
   }
+
   final _subs = <StreamSubscription>[];
   List<Transaction>? _txs;
   List<Instrument>? _inst;
@@ -75,8 +75,9 @@ class _ShellState extends State<Shell> with WidgetsBindingObserver {
     m.select(m.holidays).get().then((h) => loadHolidays({for (final x in h) x.date: x.name}));
     _subs.addAll([
       m.select(m.prices).watch().listen((v) => _set(() => _prices = v)),
-      (m.select(m.fetchLog)..where((f) => f.source.equals('full'))).watchSingleOrNull()
-          .listen((f) => s.lastRefresh.value = f?.lastOkAt),
+      (m.select(
+        m.fetchLog,
+      )..where((f) => f.source.equals('full'))).watchSingleOrNull().listen((f) => s.lastRefresh.value = f?.lastOkAt),
       db.watchTxs().listen((v) => _set(() => _txs = v)),
       db.select(db.paperTrades).watch().listen((v) => _paper = paperHeld(v)),
       db.select(db.theses).watch().listen((v) => _set(() => s.theses.value = {for (final t in v) t.instrumentId: t})),
@@ -89,7 +90,8 @@ class _ShellState extends State<Shell> with WidgetsBindingObserver {
         _set(() => s.filings.value = by);
       }),
       (db.select(db.profileSettings)..where((x) => x.key.equals('satellite_target_pct'))).watchSingleOrNull().listen(
-          (v) => _set(() => _satTarget = int.tryParse(v?.value ?? '') ?? 25)),
+        (v) => _set(() => _satTarget = int.tryParse(v?.value ?? '') ?? 25),
+      ),
       m.select(m.instruments).watch().listen((v) => _set(() => _inst = v)),
       db.select(db.holdingPrefs).watch().listen((v) => _set(() => _prefs = v)),
       db.select(db.goals).watch().listen((v) => _set(() => _goals = v)),
@@ -112,8 +114,7 @@ class _ShellState extends State<Shell> with WidgetsBindingObserver {
       book.add(p.instrumentId, p.source, p.date, p.closeE4);
     }
     book.seal();
-    final p =
-        Portfolio.compute(txs: _txs!, instruments: _inst!, prefs: _prefs, goals: _goals, sips: _sips, book: book);
+    final p = Portfolio.compute(txs: _txs!, instruments: _inst!, prefs: _prefs, goals: _goals, sips: _sips, book: book);
     s.portfolio.value = p;
     final sug = sellRules(p: p, theses: s.theses.value, filings: s.filings.value, satelliteTargetPct: _satTarget);
     s.suggestions.value = sug;
@@ -189,26 +190,50 @@ class _ShellState extends State<Shell> with WidgetsBindingObserver {
       PlanTab(session: s),
       LabTab(session: s),
     ];
-    return Scaffold(
-      body: IndexedStack(index: _tab, children: pages),
-      floatingActionButton: _tab >= 3
-          ? null
-          : FloatingActionButton.extended(
-              heroTag: 'add',
-              onPressed: _add,
-              icon: const Icon(Icons.add),
-              label: const Text('Add'),
+    // Back: other tab -> Home; Home -> lock (closes the profile database).
+    return PopScope(
+      canPop: false,
+      onPopInvokedWithResult: (didPop, _) {
+        if (didPop) return;
+        if (_tab != 0) {
+          setState(() => _tab = 0);
+        } else {
+          s.lock();
+        }
+      },
+      child: Scaffold(
+        body: IndexedStack(index: _tab, children: pages),
+        floatingActionButton: _tab >= 3
+            ? null
+            : FloatingActionButton.extended(
+                heroTag: 'add',
+                onPressed: _add,
+                icon: const Icon(Icons.add),
+                label: const Text('Add'),
+              ),
+        bottomNavigationBar: NavigationBar(
+          selectedIndex: _tab,
+          onDestinationSelected: (i) => setState(() => _tab = i),
+          destinations: const [
+            NavigationDestination(
+              icon: Icon(Icons.space_dashboard_outlined),
+              selectedIcon: Icon(Icons.space_dashboard),
+              label: 'Home',
             ),
-      bottomNavigationBar: NavigationBar(
-        selectedIndex: _tab,
-        onDestinationSelected: (i) => setState(() => _tab = i),
-        destinations: const [
-          NavigationDestination(icon: Icon(Icons.space_dashboard_outlined), selectedIcon: Icon(Icons.space_dashboard), label: 'Home'),
-          NavigationDestination(icon: Icon(Icons.pie_chart_outline), selectedIcon: Icon(Icons.pie_chart), label: 'Holdings'),
-          NavigationDestination(icon: Icon(Icons.receipt_long_outlined), selectedIcon: Icon(Icons.receipt_long), label: 'Activity'),
-          NavigationDestination(icon: Icon(Icons.flag_outlined), selectedIcon: Icon(Icons.flag), label: 'Plan'),
-          NavigationDestination(icon: Icon(Icons.science_outlined), selectedIcon: Icon(Icons.science), label: 'Lab'),
-        ],
+            NavigationDestination(
+              icon: Icon(Icons.pie_chart_outline),
+              selectedIcon: Icon(Icons.pie_chart),
+              label: 'Holdings',
+            ),
+            NavigationDestination(
+              icon: Icon(Icons.receipt_long_outlined),
+              selectedIcon: Icon(Icons.receipt_long),
+              label: 'Activity',
+            ),
+            NavigationDestination(icon: Icon(Icons.flag_outlined), selectedIcon: Icon(Icons.flag), label: 'Plan'),
+            NavigationDestination(icon: Icon(Icons.science_outlined), selectedIcon: Icon(Icons.science), label: 'Lab'),
+          ],
+        ),
       ),
     );
   }

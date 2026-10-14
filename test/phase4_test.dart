@@ -95,6 +95,23 @@ void main() {
     });
   });
 
+  group('assistant output', () {
+    test('ground truth carries the app tax constants', () {
+      expect(groundTruth, contains('flat 20%'));
+      expect(groundTruth, contains('12.5%'));
+      expect(groundTruth, contains('1,25,000'));
+      expect(groundTruth, contains('MORE than 12 months'));
+    });
+    test('markdown is flattened to plain text', () {
+      final t = plainText('## Heading\n**Bold** text\n| A | B |\n|---|---|\n| 1 | 2 |\n\n\n\nEnd &gt; x');
+      expect(t, isNot(contains('**')));
+      expect(t, isNot(contains('#')));
+      expect(t, isNot(contains('|')));
+      expect(t, contains('Bold text'));
+      expect(t, contains('End > x'));
+    });
+  });
+
   group('alerts fire only per section 7', () {
     final now = DateTime.utc(2026, 10, 14, 6);
     NewsItem n(String pub, String label, int hoursAgo, [int inst = 1]) => NewsItem(

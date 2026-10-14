@@ -47,6 +47,9 @@ void main() {
         expect(close, greaterThan(0));
       }
       expect(() => parseYahooChart('{"chart":{"result":null}}'), throwsFormatException);
+      // Float noise is rounded to paise.
+      final f = parseYahooChart('{"chart":{"result":[{"timestamp":[1791885503],"indicators":{"quote":[{"close":[2309.1000976562]}]}}]}}');
+      expect(f.single.$2, 23091000);
     });
     test('bhavcopy closes for EQ series', () {
       final m = parseBhavcopy(fx('bhav_13102026.csv'));
