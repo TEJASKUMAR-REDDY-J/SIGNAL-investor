@@ -29,7 +29,7 @@ Future<void> ensureHistory(MarketDb m, Net n, Instrument i) async {
   if (i.kind == 'mf' && i.schemeCode != null) {
     await m.putPrices(i.id, 'mfapi', (await mfNavs(n, i.schemeCode!)).navs);
   } else if (i.yahooTicker != null) {
-    await m.putPrices(i.id, 'yahoo', await yahooDaily(n, i.yahooTicker!, range: '2y'));
+    await m.putPrices(i.id, 'yahoo', await yahooDaily(n, i.yahooTicker!, range: '5y')); // 3- and 5-year growth
   }
   await m.logFetch('${i.kind == 'mf' ? 'nav' : 'px'}:${i.id}', at: DateTime.now());
 }

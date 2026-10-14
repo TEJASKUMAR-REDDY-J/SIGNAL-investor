@@ -158,9 +158,9 @@ Future<Map<String, List<FundIdea>>> runFundScan(
   Net? net,
 }) async {
   final now = (nowUtc ?? DateTime.now()).toUtc();
-  final n = net ?? Net(timeout: const Duration(seconds: 30)); // NAVAll is ~1.5 MB
+  final n = net ?? Net();
   onProgress(0, 1, 'Fetching the AMFI fund list');
-  final funds = await amfiFunds(n);
+  final funds = await amfiFunds(net ?? amfiNet());
   final cached = {
     for (final r in await (m.select(m.fundamentals)..where((f) => f.symbol.like('$fundKeyPrefix%'))).get())
       r.symbol.substring(fundKeyPrefix.length): r.fetchedAt.toUtc(),
