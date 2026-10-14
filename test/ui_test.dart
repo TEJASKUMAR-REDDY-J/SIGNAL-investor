@@ -87,7 +87,7 @@ void main() {
     await settle(t);
     await t.tap(find.text('Choose fund or stock'));
     await settle(t);
-    await t.tap(find.text('New fund / stock'));
+    await t.tap(find.text('Add by symbol or scheme code'));
     await settle(t);
     await t.tap(find.text('NSE stock'));
     await settle(t, 5);
@@ -248,6 +248,30 @@ void main() {
     expect(find.text('Masters'), findsOneWidget);
     final g = await q(t, () => db.select(db.goals).getSingle());
     expect(g.targetPaise, 150000000);
+    await close(t);
+  });
+
+  testWidgets('picker searches the whole NSE list and adds a stock in one tap', (t) async {
+    tall(t);
+    await q(t, () => market.batch((b) => b.insertAll(market.universe, [
+          UniverseCompanion.insert(symbol: 'INFY', name: 'Infosys Limited', nifty500: const Value(true)),
+          UniverseCompanion.insert(symbol: 'INFIBEAM', name: 'Infibeam Avenues Limited'),
+        ])));
+    await t.pumpWidget(app());
+    await settle(t);
+    await t.tap(find.text('Add'));
+    await settle(t);
+    await t.tap(find.text('Choose fund or stock'));
+    await settle(t);
+    await t.enterText(find.widgetWithText(TextField, 'Search any NSE stock or mutual fund'), 'infy');
+    await settle(t, 30);
+    expect(find.text('Infosys Limited'), findsOneWidget);
+    expect(find.textContaining('NIFTY 500'), findsOneWidget);
+    await t.tap(find.text('Infosys Limited'));
+    await settle(t);
+    final inst = await q(t, () => (market.select(market.instruments)..where((i) => i.nseSymbol.equals('INFY'))).getSingle());
+    expect(inst.yahooTicker, 'INFY.NS');
+    expect(find.text('Infosys Limited'), findsOneWidget); // selected in the form
     await close(t);
   });
 

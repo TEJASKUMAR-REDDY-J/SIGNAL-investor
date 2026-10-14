@@ -3,13 +3,12 @@ import 'package:drift/drift.dart';
 import '../db/db.dart';
 import '../engine/calendar.dart';
 import '../engine/lots.dart';
+import '../engine/valuation.dart' show benchmarkScheme;
 import '../sources/mfapi.dart';
 import '../sources/net.dart';
 import '../sources/nse.dart';
 import '../sources/yahoo.dart';
 
-/// Ghost-twin benchmark: UTI Nifty 50 Index Fund - Direct Growth (mfapi 120716).
-const benchmarkScheme = '120716';
 const indexTicker = '^NSEI';
 
 // ---- staleness rules (all instants UTC; IST handled by the calendar) ----

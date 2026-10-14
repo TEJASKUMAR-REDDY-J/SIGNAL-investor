@@ -1026,7 +1026,7 @@ class _SummaryState extends State<_Summary> {
                         p.anyPriced
                             ? Wrap(alignment: WrapAlignment.end, children: [
                                 Money(gain, signed: true, colored: true),
-                                Text(' (${(pct.abs() * 100).toStringAsFixed(1)}%)',
+                                Text(' (${pct < 0 ? '-' : ''}${(pct.abs() * 100).toStringAsFixed(1)}%)',
                                     style: TextStyle(color: cs.signed(gain), fontWeight: FontWeight.w600)),
                               ])
                             : Text('—', style: TextStyle(color: cs.onSurfaceVariant)),

@@ -163,7 +163,9 @@ class Portfolio {
     final now = today ?? istToday();
     final pb = book ?? (PriceBook()..seal());
     final inst = {for (final i in instruments) i.id: i};
-    final benchId = instruments.where((i) => i.aliases == 'benchmark').firstOrNull?.id;
+    final benchId = (instruments.where((i) => i.schemeCode == benchmarkScheme).firstOrNull ??
+            instruments.where((i) => i.aliases == 'benchmark').firstOrNull)
+        ?.id;
     final indexId = instruments.where((i) => i.kind == 'index').firstOrNull?.id;
     final bucket = {for (final p in prefs) p.instrumentId: p.bucket};
     final byInst = <int, List<Tx>>{};

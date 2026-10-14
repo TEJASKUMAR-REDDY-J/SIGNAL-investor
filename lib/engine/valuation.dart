@@ -4,6 +4,10 @@ import 'lots.dart';
 import 'money.dart';
 import 'xirr.dart';
 
+/// Ghost-twin benchmark: UTI Nifty 50 Index Fund - Direct Growth (mfapi 120716).
+/// Identified by scheme code, so it also works when the user holds this fund.
+const benchmarkScheme = '120716';
+
 /// Max allowed gap between two price sources for the same day.
 const mismatchBps = 50; // 0.5%
 

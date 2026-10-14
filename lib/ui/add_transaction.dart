@@ -1,4 +1,6 @@
-import 'package:drift/drift.dart' show Value;
+import 'dart:async';
+
+import 'package:drift/drift.dart' hide Column;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
@@ -7,6 +9,8 @@ import '../engine/calendar.dart';
 import '../engine/lots.dart';
 import '../engine/money.dart';
 import '../engine/tax.dart';
+import '../sources/mfapi.dart';
+import '../sources/net.dart';
 import 'theme.dart';
 import 'widgets.dart';
 
@@ -450,53 +454,149 @@ class _InstrumentPicker extends StatefulWidget {
 
 class _InstrumentPickerState extends State<_InstrumentPicker> {
   String _q = '';
+  List<Listing> _stocks = const [];
+  List<(String, String)> _funds = const [];
+  bool _searchingFunds = false;
+  Timer? _debounce;
+  final _net = Net();
+
+  MarketDb get m => widget.market;
+
+  @override
+  void dispose() {
+    _debounce?.cancel();
+    super.dispose();
+  }
+
+  void _onQuery(String v) {
+    setState(() => _q = v.trim().toLowerCase());
+    _debounce?.cancel();
+    _debounce = Timer(const Duration(milliseconds: 350), _search);
+  }
+
+  /// Every NSE-listed stock (local list) and every mutual fund (mfapi search).
+  Future<void> _search() async {
+    final q = _q;
+    if (q.length < 2) {
+      setState(() => (_stocks = const [], _funds = const []));
+      return;
+    }
+    final stocks = await (m.select(m.universe)
+          ..where((u) => u.symbol.lower().like('$q%') | u.name.lower().like('%$q%'))
+          ..orderBy([(u) => OrderingTerm.desc(u.nifty500), (u) => OrderingTerm.asc(u.symbol)])
+          ..limit(15))
+        .get();
+    if (!mounted || q != _q) return;
+    setState(() {
+      _stocks = stocks;
+      _searchingFunds = q.length >= 3;
+    });
+    if (q.length < 3) return;
+    try {
+      final f = await mfSearch(_net, q);
+      if (mounted && q == _q) setState(() => _funds = f.take(25).toList());
+    } catch (_) {
+      if (mounted && q == _q) setState(() => _funds = const []);
+    } finally {
+      if (mounted && q == _q) setState(() => _searchingFunds = false);
+    }
+  }
+
+  Future<int> _ensureStock(Listing l) async {
+    final hit = await (m.select(m.instruments)..where((i) => i.nseSymbol.equals(l.symbol))).getSingleOrNull();
+    return hit?.id ??
+        await m.into(m.instruments).insert(InstrumentsCompanion.insert(
+            kind: 'stock', name: l.name, nseSymbol: Value(l.symbol), yahooTicker: Value('${l.symbol}.NS')));
+  }
+
+  Future<int> _ensureFund(String code, String name) async {
+    final hit = await (m.select(m.instruments)..where((i) => i.schemeCode.equals(code))).getSingleOrNull();
+    return hit?.id ??
+        await m.into(m.instruments).insert(InstrumentsCompanion.insert(kind: 'mf', name: name, schemeCode: Value(code)));
+  }
+
   @override
   Widget build(BuildContext context) {
-    final m = widget.market;
+    final cs = Theme.of(context).colorScheme;
+    Widget header(String t) => Padding(
+          padding: const EdgeInsets.fromLTRB(16, 14, 16, 4),
+          child: Text(t, style: TextStyle(fontSize: 12.5, fontWeight: FontWeight.w700, color: cs.onSurfaceVariant)),
+        );
     return SizedBox(
-      height: MediaQuery.sizeOf(context).height * 0.8,
+      height: MediaQuery.sizeOf(context).height * 0.85,
       child: Column(children: [
         Padding(
           padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
           child: TextField(
             autofocus: true,
-            decoration: const InputDecoration(hintText: 'Search your funds and stocks', prefixIcon: Icon(Icons.search)),
-            onChanged: (v) => setState(() => _q = v.trim().toLowerCase()),
+            decoration: const InputDecoration(
+                hintText: 'Search any NSE stock or mutual fund', prefixIcon: Icon(Icons.search)),
+            onChanged: _onQuery,
           ),
         ),
-        ListTile(
-          leading: const Icon(Icons.add_circle_outline),
-          title: const Text('New fund / stock'),
-          onTap: () async {
-            final id = await showDialog<int>(context: context, builder: (_) => _NewInstrument(m, initialName: _q));
-            if (id != null && context.mounted) Navigator.pop(context, id);
-          },
-        ),
-        const Divider(height: 1),
         Expanded(
           child: StreamBuilder(
             stream: m.select(m.instruments).watch(),
             builder: (context, snap) {
-              final all = [...(snap.data ?? const <Instrument>[])]..sort((a, b) => a.name.compareTo(b.name));
-              final list = all
-                  .where((i) => _q.isEmpty ||
-                      '${i.name} ${i.nseSymbol ?? ''} ${i.schemeCode ?? ''} ${i.aliases}'.toLowerCase().contains(_q))
-                  .toList();
-              if (list.isEmpty) {
-                return const Center(child: Text('Nothing yet. Add it with "New fund / stock".'));
-              }
-              return ListView.builder(
-                itemCount: list.length,
-                itemBuilder: (context, i) {
-                  final it = list[i];
-                  return ListTile(
+              final mine = [
+                for (final i in snap.data ?? const <Instrument>[])
+                  if (i.kind != 'index' &&
+                      (_q.isEmpty || '${i.name} ${i.nseSymbol ?? ''} ${i.schemeCode ?? ''} ${i.aliases}'.toLowerCase().contains(_q)))
+                    i,
+              ]..sort((a, b) => a.name.compareTo(b.name));
+              final mineSymbols = {for (final i in mine) i.nseSymbol};
+              final mineCodes = {for (final i in mine) i.schemeCode};
+              return ListView(children: [
+                if (mine.isNotEmpty) header('YOURS'),
+                for (final it in mine)
+                  ListTile(
                     leading: Icon(it.kind == 'mf' ? Icons.pie_chart_outline : Icons.show_chart),
                     title: Text(it.name),
                     subtitle: Text(it.kind == 'mf' ? 'Scheme ${it.schemeCode}' : 'NSE ${it.nseSymbol}'),
                     onTap: () => Navigator.pop(context, it.id),
-                  );
-                },
-              );
+                  ),
+                if (_stocks.any((l) => !mineSymbols.contains(l.symbol))) header('NSE STOCKS'),
+                for (final l in _stocks)
+                  if (!mineSymbols.contains(l.symbol))
+                    ListTile(
+                      leading: const Icon(Icons.show_chart),
+                      title: Text(l.name),
+                      subtitle: Text('${l.symbol}${l.nifty500 ? ' · NIFTY 500' : ''}${l.industry.isEmpty ? '' : ' · ${l.industry}'}'),
+                      onTap: () async {
+                        final id = await _ensureStock(l);
+                        if (context.mounted) Navigator.pop(context, id);
+                      },
+                    ),
+                if (_searchingFunds) const Padding(padding: EdgeInsets.all(12), child: LinearProgressIndicator()),
+                if (_funds.any((f) => !mineCodes.contains(f.$1))) header('MUTUAL FUNDS'),
+                for (final (code, name) in _funds)
+                  if (!mineCodes.contains(code))
+                    ListTile(
+                      leading: const Icon(Icons.pie_chart_outline),
+                      title: Text(name),
+                      subtitle: Text('Scheme $code${isRegularPlan(name) ? ' · Regular plan (higher cost)' : ''}'),
+                      onTap: () async {
+                        final id = await _ensureFund(code, name);
+                        if (context.mounted) Navigator.pop(context, id);
+                      },
+                    ),
+                if (_q.length >= 2 && _stocks.isEmpty && _funds.isEmpty && !_searchingFunds)
+                  const Padding(padding: EdgeInsets.all(16), child: Text('No match. You can add it by code below.')),
+                if (_q.isEmpty && mine.isEmpty)
+                  const Padding(
+                    padding: EdgeInsets.all(16),
+                    child: Text('Type a company, NSE symbol or fund name. All NSE stocks and all mutual funds are searchable.'),
+                  ),
+                const Divider(),
+                ListTile(
+                  leading: const Icon(Icons.edit_note),
+                  title: const Text('Add by symbol or scheme code'),
+                  onTap: () async {
+                    final id = await showDialog<int>(context: context, builder: (_) => _NewInstrument(m, initialName: _q));
+                    if (id != null && context.mounted) Navigator.pop(context, id);
+                  },
+                ),
+              ]);
             },
           ),
         ),
