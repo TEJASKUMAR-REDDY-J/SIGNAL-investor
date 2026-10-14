@@ -68,6 +68,7 @@ class _AddTransactionState extends State<AddTransaction> {
   bool _saving = false;
   // Price autofill: on until the user types their own price.
   bool _autoPrice = false;
+  bool _editPrice = false; // user chose to type their own price
   bool _fetching = false;
   String? _priceNote;
   int _fillSeq = 0;
@@ -373,7 +374,25 @@ class _AddTransactionState extends State<AddTransaction> {
                   helperText: unitHelp),
               validator: (v) => _num(v, 4),
             ),
-          if (!_ratio) ...[
+          if (!_ratio && _trade && _autoPrice && !_editPrice && _price.text.isNotEmpty) ...[
+            // Price found automatically: show it, no typing needed.
+            const SizedBox(height: 12),
+            Container(
+              padding: const EdgeInsets.fromLTRB(16, 12, 8, 12),
+              decoration: BoxDecoration(color: cs.primary.withValues(alpha: 0.07), borderRadius: BorderRadius.circular(12)),
+              child: Row(children: [
+                Icon(Icons.auto_fix_high, color: cs.primary),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                    Text('${_isMf ? 'NAV' : 'Price'} ₹${_price.text}', style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 16)),
+                    if (_priceNote != null) Text(_priceNote!.split('.').first, style: TextStyle(fontSize: 12, color: cs.onSurfaceVariant)),
+                  ]),
+                ),
+                TextButton(onPressed: () => setState(() => _editPrice = true), child: const Text('Edit')),
+              ]),
+            ),
+          ] else if (!_ratio) ...[
             const SizedBox(height: 12),
             TextFormField(
               controller: _price,

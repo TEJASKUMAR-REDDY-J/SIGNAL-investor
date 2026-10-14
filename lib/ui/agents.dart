@@ -3,6 +3,7 @@ import 'package:fl_chart/fl_chart.dart';
 import 'package:flutter/material.dart';
 
 import '../db/db.dart';
+import '../engine/agent_stats.dart';
 import '../engine/agents.dart';
 import '../engine/lots.dart';
 import '../engine/money.dart';
@@ -65,6 +66,10 @@ class AgentsTab extends StatelessWidget {
                 Money(total, style: t.headlineMedium?.copyWith(fontWeight: FontWeight.w700)),
                 Text('${_pc(total / start - 1)} on ${rupees(start, decimals: false)} across 3 agents',
                     style: TextStyle(color: cs.signed(total - start), fontWeight: FontWeight.w600)),
+                if (runs.isNotEmpty && runs.last.regime != null) ...[
+                  const SizedBox(height: 8),
+                  Text('Market mood: ${runs.last.regime}', style: TextStyle(fontSize: 12.5, color: cs.onSurfaceVariant)),
+                ],
                 const SizedBox(height: 10),
                 _RunStatus(session: session, runs: runs),
               ]),
@@ -368,6 +373,9 @@ class AgentScreen extends StatelessWidget {
           ]),
         ),
       ),
+      _Scorecard(stats: statsFor(kind, runs, trades, {
+        if (idx != null) for (final b in p.book.series(idx.id)) fmtDay(b.day): b.closeE4 / 10000,
+      })),
       SectionHeader('Holdings', trailing: Text('${rows.length}')),
       if (rows.isEmpty) const EmptyState(icon: Icons.inventory_2_outlined, title: 'No holdings yet', message: 'The agent buys on its next run.'),
       for (final x in rows)
@@ -399,12 +407,7 @@ class AgentScreen extends StatelessWidget {
     return ListView(padding: const EdgeInsets.all(12), children: [
       for (final d in days) ...[
         SectionHeader(prettyDay(parseDay(d))),
-        for (final r in runs.where((r) => r.date == d))
-          Notice(
-            icon: r.ai ? Icons.auto_awesome : Icons.rule,
-            color: cs.primary,
-            text: '${r.summary}  (${rupees(r.valuePaise, decimals: false)} after)',
-          ),
+        for (final r in runs.where((r) => r.date == d)) _RunCard(run: r),
         Card(
           child: Column(children: [
             for (final t in trades.where((t) => t.date == d))
@@ -431,6 +434,38 @@ class AgentScreen extends StatelessWidget {
 
   Widget _rules(BuildContext context, AgentConfig cfg) {
     final cs = Theme.of(context).colorScheme;
+    final m = session.market;
+    final lessons = StreamBuilder(
+      stream: (m.select(m.agentMemories)
+            ..where((x) => x.agent.equals(kind.name))
+            ..orderBy([(x) => OrderingTerm.desc(x.at)])
+            ..limit(9))
+          .watch(),
+      builder: (context, snap) {
+        final l = snap.data ?? const <AgentMemory>[];
+        return Card(
+          child: Padding(
+            padding: const EdgeInsets.all(16),
+            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              Row(children: [
+                Icon(Icons.psychology_outlined, color: cs.primary),
+                const SizedBox(width: 8),
+                const Text('What it has learned', style: TextStyle(fontWeight: FontWeight.w700)),
+              ]),
+              const SizedBox(height: 8),
+              if (l.isEmpty)
+                Text('Every Monday it reviews its closed trades and writes lessons it then reads before each decision.',
+                    style: TextStyle(color: cs.onSurfaceVariant)),
+              for (final x in l)
+                Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 4),
+                  child: Text('• ${x.body}  (${prettyDay(x.at)})'),
+                ),
+            ]),
+          ),
+        );
+      },
+    );
     Widget line(String a, String b) => Padding(
           padding: const EdgeInsets.symmetric(vertical: 5),
           child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
@@ -439,6 +474,7 @@ class AgentScreen extends StatelessWidget {
           ]),
         );
     return ListView(padding: const EdgeInsets.all(12), children: [
+      lessons,
       Card(
         child: Padding(
           padding: const EdgeInsets.all(16),
@@ -455,13 +491,100 @@ class AgentScreen extends StatelessWidget {
             if (cfg.maxHoldDays != null) line('Longest hold', '${cfg.maxHoldDays} days'),
             line('Costs', '0.1% per trade'),
             line('When', 'Every market day about 11:00 AM; 4:00 PM if it missed'),
+            line('Sizing', 'Jumpier stocks get smaller positions (volatility targeting)'),
+            line('Market mood', 'Risk-off markets cut new buying to 35%; neutral to 70%'),
+            line('Drawdown brake', 'Half-size buys after an 8% fall from its peak; none after 15%'),
           ]),
         ),
       ),
-      const Fine('How a decision is made: fixed rules rank NIFTY 500 using the Advisor data (quality, growth, value, '
-          'momentum), recent price moves and AI-scored news, and draft a plan. The AI agent then picks from that shortlist, '
-          'reading your notes. Code applies the limits above to whatever it picks; stop-losses and profit targets always '
-          'run. Paper money only.'),
+      const Fine('How a decision is made: rules rank NIFTY 500 on Advisor data, technicals (RSI, MACD, 50/200-day '
+          'averages, relative strength) and AI-scored news, and draft a plan. The AI trader then calls tools to check '
+          'technicals, fundamentals, news, the market mood and its own track record, argues a bull and a bear case, and '
+          'decides within the shortlist. Code applies every limit above; stop-losses and profit targets always run. '
+          'Paper money only.'),
     ]);
+  }
+}
+
+/// Return, risk and what has worked, the same numbers the agent reads about itself.
+class _Scorecard extends StatelessWidget {
+  final AgentStats stats;
+  const _Scorecard({required this.stats});
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    final s = stats;
+    Widget cell(String k, String v, [Color? c]) => SizedBox(
+          width: 150,
+          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Text(k, style: TextStyle(fontSize: 12, color: cs.onSurfaceVariant)),
+            Text(v, style: TextStyle(fontWeight: FontWeight.w700, fontSize: 16, color: c, fontFeatures: tabular)),
+          ]),
+        );
+    String p(double? x) => x == null ? '—' : '${x >= 0 ? '+' : ''}${(x * 100).toStringAsFixed(1)}%';
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          const Text('Scorecard', style: TextStyle(fontWeight: FontWeight.w700)),
+          const SizedBox(height: 10),
+          Wrap(spacing: 12, runSpacing: 12, children: [
+            cell('Return', p(s.totalReturn), cs.signed((s.totalReturn * 10000).round())),
+            cell('vs NIFTY 50', p(s.alpha), s.alpha == null ? null : cs.signed((s.alpha! * 10000).round())),
+            cell('Sharpe', s.sharpe == null ? 'needs 6 days' : s.sharpe!.toStringAsFixed(2)),
+            cell('Worst fall', '-${(s.maxDrawdown * 100).toStringAsFixed(1)}%', cs.loss),
+            cell('Win rate', s.winRate == null ? 'no closed trades' : '${(s.winRate! * 100).round()}% of ${s.closed.length}'),
+            cell('Avg hold', s.avgHoldDays == null ? '—' : '${s.avgHoldDays!.toStringAsFixed(0)} days'),
+          ]),
+          if (s.bySignal.isNotEmpty) ...[
+            const SizedBox(height: 10),
+            Text(
+                'Wins by signal: ${s.bySignal.entries.map((e) => '${e.key} ${e.value.$1}/${e.value.$2}').join(' · ')}',
+                style: TextStyle(fontSize: 12.5, color: cs.onSurfaceVariant)),
+          ],
+        ]),
+      ),
+    );
+  }
+}
+
+/// One day's decision: summary, market mood, and the AI's bull and bear case.
+class _RunCard extends StatelessWidget {
+  final AgentRun run;
+  const _RunCard({required this.run});
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    final r = run;
+    return Card(
+      child: Theme(
+        data: Theme.of(context).copyWith(dividerColor: Colors.transparent),
+        child: ExpansionTile(
+          leading: Icon(r.ai ? Icons.auto_awesome : Icons.rule, color: cs.primary),
+          title: Text(r.summary, style: const TextStyle(fontSize: 14.5)),
+          subtitle: Text(
+              '${rupees(r.valuePaise, decimals: false)} after${r.toolCalls > 0 ? ' · ${r.toolCalls} data look-ups' : ''}',
+              style: TextStyle(fontSize: 12, color: cs.onSurfaceVariant)),
+          childrenPadding: const EdgeInsets.fromLTRB(16, 0, 16, 14),
+          expandedCrossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            if (r.regime != null) Text('Market: ${r.regime}', style: TextStyle(fontSize: 13, color: cs.onSurfaceVariant)),
+            if (r.bull != null && r.bull!.isNotEmpty) ...[
+              const SizedBox(height: 8),
+              Text('Bull case', style: TextStyle(fontWeight: FontWeight.w700, color: cs.gain)),
+              Text(r.bull!),
+            ],
+            if (r.bear != null && r.bear!.isNotEmpty) ...[
+              const SizedBox(height: 8),
+              Text('Bear case', style: TextStyle(fontWeight: FontWeight.w700, color: cs.loss)),
+              Text(r.bear!),
+            ],
+            if (!r.ai) Text('Rules only (no AI key or the AI was unavailable).', style: TextStyle(fontSize: 12.5, color: cs.onSurfaceVariant)),
+          ],
+        ),
+      ),
+    );
   }
 }

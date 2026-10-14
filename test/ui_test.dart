@@ -346,9 +346,12 @@ void main() {
     expect((await q(t, () => db.select(db.watchlist).get())).single.instrumentId, id);
     await t.tap(find.text('I bought this'));
     await settle(t, 60);
+    expect(find.text('Price ₹2500'), findsOneWidget); // filled in, nothing to type
+    expect(find.widgetWithText(TextFormField, 'Price per share'), findsNothing);
+    await t.tap(find.text('Edit'));
+    await settle(t);
     expect(find.widgetWithText(TextFormField, 'Price per share'), findsOneWidget);
-    expect(find.text('2500'), findsOneWidget); // filled in
-    expect(find.textContaining('filled in'), findsOneWidget);
+    expect(find.text('2500'), findsOneWidget);
     await t.enterText(find.widgetWithText(TextFormField, 'Quantity (shares)'), '4');
     await settle(t, 3);
     expect(find.text('₹10,000.00'), findsOneWidget);
