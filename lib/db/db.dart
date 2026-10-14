@@ -66,11 +66,75 @@ class FetchLog extends Table {
   Set<Column> get primaryKey => {source};
 }
 
-@DriftDatabase(tables: [Instruments, Prices, NewsItems, Filings, FetchLog])
+/// NSE trading holidays fetched at runtime (bundled list covers 2026).
+class Holidays extends Table {
+  TextColumn get date => text()();
+  TextColumn get name => text()();
+  @override
+  Set<Column> get primaryKey => {date};
+}
+
+/// Every NSE-listed equity (EQUITY_L.csv); [nifty500] marks scan members.
+@DataClassName('Listing')
+class Universe extends Table {
+  TextColumn get symbol => text()();
+  TextColumn get name => text()();
+  TextColumn get industry => text().withDefault(const Constant(''))();
+  TextColumn get isin => text().withDefault(const Constant(''))();
+  BoolColumn get nifty500 => boolean().withDefault(const Constant(false))();
+  @override
+  Set<Column> get primaryKey => {symbol};
+}
+
+/// Latest fundamentals per NSE symbol (scan cache), raw JSON numbers.
+@DataClassName('Fundamental')
+class Fundamentals extends Table {
+  TextColumn get symbol => text()();
+  TextColumn get json => text()();
+  DateTimeColumn get fetchedAt => dateTime()();
+  @override
+  Set<Column> get primaryKey => {symbol};
+}
+
+@DriftDatabase(tables: [Instruments, Prices, NewsItems, Filings, FetchLog, Holidays, Universe, Fundamentals])
 class MarketDb extends _$MarketDb {
   MarketDb(super.e);
   @override
-  int get schemaVersion => 1;
+  int get schemaVersion => 2;
+
+  @override
+  MigrationStrategy get migration => MigrationStrategy(
+        onUpgrade: (m, from, to) async {
+          if (from < 2) {
+            await m.createTable(holidays);
+            await m.createTable(universe);
+            await m.createTable(fundamentals);
+          }
+        },
+      );
+
+  Future<void> logFetch(String source, {Object? error, int rows = 0}) async {
+    final now = DateTime.now();
+    final old = await (select(fetchLog)..where((f) => f.source.equals(source))).getSingleOrNull();
+    await into(fetchLog).insertOnConflictUpdate(FetchLogCompanion.insert(
+      source: source,
+      lastAttemptAt: Value(now),
+      lastOkAt: Value(error == null ? now : old?.lastOkAt),
+      lastError: Value(error?.toString()),
+      rows: Value(rows),
+    ));
+  }
+
+  Future<FetchLogData?> fetchState(String source) =>
+      (select(fetchLog)..where((f) => f.source.equals(source))).getSingleOrNull();
+
+  Future<void> putPrices(int instrumentId, String source, Iterable<(String, int)> rows) {
+    final now = DateTime.now();
+    return batch((b) => b.insertAllOnConflictUpdate(prices, [
+          for (final (d, c) in rows)
+            PricesCompanion.insert(instrumentId: instrumentId, date: d, closeE4: c, source: source, fetchedAt: now),
+        ]));
+  }
 }
 
 // ---- profile_<id>.db: everything personal ----
@@ -92,6 +156,8 @@ class Transactions extends Table {
   IntColumn get feesPaise => integer().withDefault(const Constant(0))();
   IntColumn get goalId => integer().nullable()();
   TextColumn get note => text().withDefault(const Constant(''))();
+  // STT is not deductible from capital gains (s.48), so it is kept out of cost.
+  IntColumn get sttPaise => integer().withDefault(const Constant(0))();
 }
 
 class SipPlans extends Table {
@@ -110,6 +176,7 @@ class Theses extends Table {
   TextColumn get whyBought => text()();
   TextColumn get breaksIf => text()();
   TextColumn get reviewDate => text().nullable()();
+  BoolColumn get broken => boolean().withDefault(const Constant(false))();
   @override
   Set<Column> get primaryKey => {instrumentId};
 }
@@ -121,8 +188,21 @@ class Signals extends Table {
   DateTimeColumn get createdAt => dateTime()();
   TextColumn get inputsJson => text()();
   TextColumn get ruleVersion => text()();
-  TextColumn get status => text()();
-  TextColumn get userAction => text().nullable()();
+  TextColumn get status => text()(); // open | closed
+  TextColumn get userAction => text().nullable()(); // planned | dismissed | done
+  DateTimeColumn get actedAt => dateTime().nullable()();
+  TextColumn get note => text().withDefault(const Constant(''))();
+}
+
+/// Simulator: paper trades at real prices with virtual cash.
+class PaperTrades extends Table {
+  IntColumn get id => integer().autoIncrement()();
+  IntColumn get instrumentId => integer()();
+  TextColumn get date => text()();
+  TextColumn get type => text()(); // buy | sell
+  IntColumn get unitsE4 => integer()();
+  IntColumn get priceE4 => integer()();
+  TextColumn get reason => text().withDefault(const Constant(''))();
 }
 
 class AuditLog extends Table {
@@ -148,12 +228,12 @@ class ProfileSettings extends Table {
 }
 
 @DriftDatabase(tables: [
-  Goals, Transactions, SipPlans, Theses, Signals, AuditLog, HoldingPrefs, ProfileSettings
+  Goals, Transactions, SipPlans, Theses, Signals, AuditLog, HoldingPrefs, ProfileSettings, PaperTrades
 ])
 class ProfileDb extends _$ProfileDb {
   ProfileDb(super.e);
   @override
-  int get schemaVersion => 2;
+  int get schemaVersion => 3;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -161,6 +241,13 @@ class ProfileDb extends _$ProfileDb {
           if (from < 2) {
             await m.createTable(holdingPrefs);
             await m.createTable(profileSettings);
+          }
+          if (from < 3) {
+            await m.addColumn(transactions, transactions.sttPaise);
+            await m.addColumn(theses, theses.broken);
+            await m.addColumn(signals, signals.actedAt);
+            await m.addColumn(signals, signals.note);
+            await m.createTable(paperTrades);
           }
         },
       );
@@ -235,6 +322,57 @@ class ProfileDb extends _$ProfileDb {
       'bucket $instrumentId $bucket',
       () => into(holdingPrefs).insertOnConflictUpdate(
           HoldingPrefsCompanion.insert(instrumentId: Value(instrumentId), bucket: Value(bucket))));
+
+  Future<void> setThesisBroken(int instrumentId, bool broken) =>
+      audited('edit', 'thesis_broken $instrumentId $broken', () async {
+        await (update(theses)..where((t) => t.instrumentId.equals(instrumentId)))
+            .write(ThesesCompanion(broken: Value(broken)));
+      });
+
+  /// One open signal per (instrument, rule); refreshes its inputs while open.
+  Future<void> upsertSignal(int instrumentId, int rule, String inputsJson, String ruleVersion) async {
+    final open = await (select(signals)
+          ..where((s) => s.instrumentId.equals(instrumentId) & s.rule.equals(rule) & s.status.equals('open')))
+        .getSingleOrNull();
+    if (open == null) {
+      await audited(
+          'insert',
+          'signal rule $rule',
+          () => into(signals).insert(SignalsCompanion.insert(
+              instrumentId: instrumentId,
+              rule: rule,
+              createdAt: DateTime.now(),
+              inputsJson: inputsJson,
+              ruleVersion: ruleVersion,
+              status: 'open')));
+    } else if (open.inputsJson != inputsJson) {
+      await (update(signals)..where((s) => s.id.equals(open.id)))
+          .write(SignalsCompanion(inputsJson: Value(inputsJson), ruleVersion: Value(ruleVersion)));
+    }
+  }
+
+  /// Closes open signals of [rules] that no longer fire (planned ones stay).
+  Future<void> closeSignalsExcept(Set<(int, int)> firing, Set<int> rules) async {
+    final open = await (select(signals)..where((s) => s.status.equals('open'))).get();
+    for (final s in open) {
+      if (rules.contains(s.rule) && !firing.contains((s.instrumentId, s.rule)) && s.userAction != 'planned') {
+        await (update(signals)..where((x) => x.id.equals(s.id)))
+            .write(const SignalsCompanion(status: Value('closed')));
+      }
+    }
+  }
+
+  Future<void> actOnSignal(int id, String action, {String note = ''}) =>
+      audited('edit', 'signal $id $action', () async {
+        await (update(signals)..where((s) => s.id.equals(id))).write(SignalsCompanion(
+            userAction: Value(action),
+            actedAt: Value(DateTime.now()),
+            note: Value(note),
+            status: Value(action == 'planned' ? 'open' : 'closed')));
+      });
+
+  Future<int> addPaperTrade(PaperTradesCompanion t) =>
+      audited('insert', 'paper_trade ${t.type.value}', () => into(paperTrades).insert(t));
 
   Future<String?> setting(String key) async =>
       (await (select(profileSettings)..where((s) => s.key.equals(key))).getSingleOrNull())?.value;

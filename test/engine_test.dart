@@ -147,6 +147,16 @@ void main() {
     });
   });
 
+  group('MF stamp duty', () {
+    test('Rs 10,000 SIP: Rs 0.50 duty, units on Rs 9,999.50', () {
+      expect(mfStampOnAmount(1000000), 50);
+      final units = unitsFor(1000000 - mfStampOnAmount(1000000), px(100));
+      expect(units, u(99.995));
+      // Cost basis = allotted value + duty = amount paid.
+      expect(valuePaise(units, px(100)) + mfStampOnValue(valuePaise(units, px(100))), 1000000);
+    });
+  });
+
   group('wait vs sell now', () {
     test('short-term sale shows extra tax versus waiting for long-term', () {
       final l = fifo([Tx(1, d('2026-03-01'), TxType.buy, u(100), px(1000))]);

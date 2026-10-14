@@ -23,7 +23,8 @@ Transaction tx(int id, int inst, String date, String type, int units4, int price
         priceE4: price4,
         feesPaise: fees,
         goalId: goal,
-        note: '');
+        note: '',
+        sttPaise: 0);
 
 SipPlan plan(String start, int day, {String? end, bool active = true}) =>
     SipPlan(id: 1, instrumentId: 1, amountPaise: 500000, dayOfMonth: day, start: start, end: end, active: active);
@@ -141,7 +142,7 @@ void main() {
     });
   });
 
-  test('profile db migrates v1 -> v2 keeping data', () async {
+  test('profile db migrates v1 -> v3 keeping data', () async {
     final dir = Directory.systemTemp.createTempSync('sigmig');
     addTearDown(() => dir.deleteSync(recursive: true));
     final f = File('${dir.path}/p.db');
@@ -153,7 +154,11 @@ void main() {
     // Turn it into a v1 file: drop v2 tables, reset user_version.
     final raw = s3.sqlite3.open(f.path)
       ..execute("PRAGMA key = '$key';")
-      ..execute('DROP TABLE holding_prefs; DROP TABLE profile_settings; PRAGMA user_version = 1;');
+      // Rebuild the v1 shape: drop every table/column added after v1.
+      ..execute('DROP TABLE holding_prefs; DROP TABLE profile_settings; DROP TABLE paper_trades; '
+          'ALTER TABLE transactions DROP COLUMN stt_paise; ALTER TABLE theses DROP COLUMN broken; '
+          'ALTER TABLE signals DROP COLUMN acted_at; ALTER TABLE signals DROP COLUMN note; '
+          'PRAGMA user_version = 1;');
     raw.close();
     db = ProfileDb(openEncrypted(f, key));
     expect(await db.select(db.transactions).get(), hasLength(1));
@@ -166,6 +171,12 @@ void main() {
     await db.addTx(TransactionsCompanion.insert(
         instrumentId: 1, date: '2025-01-02', type: 'buy', unitsE4: 1, priceE4: 1, goalId: Value(g.id)));
     await db.deleteGoal(g.id);
+    // v3 columns and tables usable after migration.
+    expect((await db.select(db.transactions).get()).first.sttPaise, 0);
+    await db.addPaperTrade(PaperTradesCompanion.insert(instrumentId: 1, date: '2026-01-01', type: 'buy', unitsE4: 1, priceE4: 1));
+    await db.saveThesis(ThesesCompanion.insert(instrumentId: const Value(1), whyBought: 'x', breaksIf: ''));
+    await db.setThesisBroken(1, true);
+    expect((await db.select(db.theses).getSingle()).broken, isTrue);
     expect((await db.select(db.transactions).get()).every((t) => t.goalId == null), isTrue);
     await db.close();
   });

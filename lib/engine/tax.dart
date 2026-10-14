@@ -110,3 +110,14 @@ WaitComparison compareWait({
   final until = short.map((s) => longTermFrom(s.buyDate)).reduce((a, b) => a.isAfter(b) ? a : b);
   return WaitComparison(now, until, at(until));
 }
+
+// Stamp duty on MF purchases (incl. SIP): 0.005% of the amount, deducted
+// before units are allotted. lastVerified: 2026-10-14 (unchanged since Jul 2020).
+const mfStampPerLakh = 5; // 0.005% = 5 per 1,00,000
+
+/// Stamp duty on an MF purchase of [amountPaise] (amount paid incl. duty).
+int mfStampOnAmount(int amountPaise) => mulDiv(amountPaise, mfStampPerLakh, 100000);
+
+/// Stamp duty when the allotted value (units x NAV) is known:
+/// amount = value / (1 - 0.00005), duty = amount - value.
+int mfStampOnValue(int valuePaise) => mulDiv(valuePaise, mfStampPerLakh, 100000 - mfStampPerLakh);

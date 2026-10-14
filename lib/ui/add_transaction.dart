@@ -36,6 +36,7 @@ class _AddTransactionState extends State<AddTransaction> {
       text: widget.sipPlan == null ? '' : formatScaled(widget.sipPlan!.amountPaise, 2));
   late final _fees = TextEditingController(text: _e == null || _e.feesPaise == 0 ? '' : formatScaled(_e.feesPaise, 2));
   late final _note = TextEditingController(text: _e?.note ?? '');
+  late final _stt = TextEditingController(text: _e == null || _e.sttPaise == 0 ? '' : formatScaled(_e.sttPaise, 2));
   bool _saving = false;
 
   Session get s => widget.session;
@@ -56,7 +57,7 @@ class _AddTransactionState extends State<AddTransaction> {
 
   @override
   void dispose() {
-    for (final c in [_units, _price, _amount, _fees, _note]) {
+    for (final c in [_units, _price, _amount, _fees, _note, _stt]) {
       c.dispose();
     }
     super.dispose();
@@ -71,14 +72,27 @@ class _AddTransactionState extends State<AddTransaction> {
     return null;
   }
 
-  /// Units entered directly, or derived from amount / NAV.
+  bool get _isMf => _inst != null && s.portfolio.value!.instruments[_inst]?.kind == 'mf';
+
+  /// MF purchases: stamp duty is automatic, no other charges field.
+  bool get _mfBuy => _isMf && (_type == TxType.buy || _type == TxType.sip);
+
+  /// Units entered directly, or derived from amount / NAV (MF: after stamp duty).
   int? get _unitsE4 {
     if (_type == TxType.dividend) return 0;
     if (_byAmount && !_ratio && _type != TxType.sell) {
       final a = parseScaled(_amount.text, 2), p = parseScaled(_price.text, 4);
-      return a == null || p == null || p <= 0 ? null : unitsFor(a, p);
+      if (a == null || p == null || p <= 0) return null;
+      return unitsFor(_isMf ? a - mfStampOnAmount(a) : a, p);
     }
     return parseScaled(_units.text, 4);
+  }
+
+  /// Charges added to cost (stocks: brokerage etc.; MF buys: stamp duty).
+  int _feesFor(int units, int price) {
+    if (!_trade) return 0;
+    if (_mfBuy) return mfStampOnValue(valuePaise(units, price));
+    return _fees.text.trim().isEmpty ? 0 : parseScaled(_fees.text, 2)!;
   }
 
   List<Tx> _otherTxs(int instrumentId) => [
@@ -94,7 +108,8 @@ class _AddTransactionState extends State<AddTransaction> {
     setState(() => _saving = true);
     try {
       final price = _ratio ? 0 : parseScaled(_price.text, 4)!;
-      final fees = _trade && _fees.text.trim().isNotEmpty ? parseScaled(_fees.text, 2)! : 0;
+      final fees = _feesFor(units, price);
+      final stt = !_isMf && _trade && _stt.text.trim().isNotEmpty ? parseScaled(_stt.text, 2)! : 0;
       final newTx = Tx(_e?.id ?? 1 << 52, _date, _type, units, price, fees);
       // Reject anything that makes a sell exceed units held, here or in the
       // instrument the entry was moved away from.
@@ -113,6 +128,7 @@ class _AddTransactionState extends State<AddTransaction> {
           unitsE4: units,
           priceE4: price,
           feesPaise: Value(fees),
+          sttPaise: Value(stt),
           goalId: Value(goal),
           note: Value(_note.text.trim()),
         ));
@@ -124,6 +140,7 @@ class _AddTransactionState extends State<AddTransaction> {
             unitsE4: units,
             priceE4: price,
             feesPaise: fees,
+            sttPaise: stt,
             goalId: Value(goal),
             note: _note.text.trim()));
       }
@@ -274,16 +291,39 @@ class _AddTransactionState extends State<AddTransaction> {
               validator: (v) => _num(v, 4),
             ),
           ],
-          if (_trade) ...[
+          if (_trade && !_mfBuy) ...[
             const SizedBox(height: 12),
             TextFormField(
               controller: _fees,
               keyboardType: const TextInputType.numberWithOptions(decimal: true),
-              decoration: const InputDecoration(
-                  labelText: 'Charges (optional)', prefixText: '₹ ', helperText: 'Brokerage, stamp duty, STT'),
+              decoration: InputDecoration(
+                  labelText: _isMf ? 'Exit load (optional)' : 'Charges (optional)',
+                  prefixText: '₹ ',
+                  helperText: _isMf
+                      ? 'Reduces sale proceeds'
+                      : 'Brokerage, exchange fees, GST, stamp duty. Not STT.'),
               validator: (v) => _num(v, 2, required: false, positive: false),
             ),
           ],
+          if (_trade && !_isMf) ...[
+            const SizedBox(height: 12),
+            TextFormField(
+              controller: _stt,
+              keyboardType: const TextInputType.numberWithOptions(decimal: true),
+              decoration: const InputDecoration(
+                  labelText: 'STT (optional)',
+                  prefixText: '₹ ',
+                  helperText: 'Kept for records only: STT is not deductible from capital gains'),
+              validator: (v) => _num(v, 2, required: false, positive: false),
+            ),
+          ],
+          if (_mfBuy && units != null && price != null)
+            Padding(
+              padding: const EdgeInsets.only(top: 8, left: 4),
+              child: Text(
+                  'Stamp duty 0.005%: ${rupees(mfStampOnValue(valuePaise(units, price)))} (added to cost automatically)',
+                  style: TextStyle(fontSize: 12, color: cs.onSurfaceVariant)),
+            ),
           if ((_type == TxType.buy || _type == TxType.sip) && p.goals.isNotEmpty) ...[
             const SizedBox(height: 12),
             DropdownButtonFormField<int?>(
