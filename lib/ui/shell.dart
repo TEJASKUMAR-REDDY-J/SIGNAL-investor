@@ -3,7 +3,11 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 
 import '../db/db.dart';
+import '../engine/calendar.dart';
 import '../engine/portfolio.dart';
+import '../engine/valuation.dart';
+import '../pipeline/refresh.dart';
+import '../sources/net.dart';
 import 'activity.dart';
 import 'add_transaction.dart';
 import 'dashboard.dart';
@@ -20,8 +24,13 @@ class Shell extends StatefulWidget {
   State<Shell> createState() => _ShellState();
 }
 
-class _ShellState extends State<Shell> {
+class _ShellState extends State<Shell> with WidgetsBindingObserver {
   int _tab = 0;
+  List<Price> _prices = const [];
+  Timer? _debounce;
+  bool _refreshedOnce = false;
+  late final _net = Net();
+  late final _refresher = Refresher(s.market, _net);
   final _subs = <StreamSubscription>[];
   List<Transaction>? _txs;
   List<Instrument>? _inst;
@@ -35,7 +44,13 @@ class _ShellState extends State<Shell> {
   void initState() {
     super.initState();
     final db = s.db, m = s.market;
+    WidgetsBinding.instance.addObserver(this);
+    s.refresh = _refresh;
+    m.select(m.holidays).get().then((h) => loadHolidays({for (final x in h) x.date: x.name}));
     _subs.addAll([
+      m.select(m.prices).watch().listen((v) => _set(() => _prices = v)),
+      (m.select(m.fetchLog)..where((f) => f.source.equals('full'))).watchSingleOrNull()
+          .listen((f) => s.lastRefresh.value = f?.lastOkAt),
       db.watchTxs().listen((v) => _set(() => _txs = v)),
       m.select(m.instruments).watch().listen((v) => _set(() => _inst = v)),
       db.select(db.holdingPrefs).watch().listen((v) => _set(() => _prefs = v)),
@@ -47,12 +62,47 @@ class _ShellState extends State<Shell> {
   void _set(VoidCallback f) {
     f();
     if (_txs == null || _inst == null) return;
-    s.portfolio.value = Portfolio.compute(
-        txs: _txs!, instruments: _inst!, prefs: _prefs, goals: _goals, sips: _sips);
+    // First paint immediately from cache; later bursts (price batches) coalesce.
+    if (s.portfolio.value == null) return _compute();
+    _debounce?.cancel();
+    _debounce = Timer(const Duration(milliseconds: 120), _compute);
+  }
+
+  void _compute() {
+    final book = PriceBook();
+    for (final p in _prices) {
+      book.add(p.instrumentId, p.source, p.date, p.closeE4);
+    }
+    book.seal();
+    s.portfolio.value =
+        Portfolio.compute(txs: _txs!, instruments: _inst!, prefs: _prefs, goals: _goals, sips: _sips, book: book);
+    if (!_refreshedOnce) {
+      _refreshedOnce = true;
+      _refresh();
+    }
+  }
+
+  Future<void> _refresh({bool force = false}) async {
+    if (s.refreshing.value) return;
+    s.refreshing.value = true;
+    try {
+      final held = {for (final h in s.portfolio.value?.holdings ?? const <Holding>[]) h.instrumentId};
+      final lines = await _refresher.run(held, force: force);
+      if (force || lines.isNotEmpty) s.receipt.value = lines;
+    } finally {
+      if (mounted) s.refreshing.value = false;
+    }
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) _refresh();
   }
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    _debounce?.cancel();
     for (final x in _subs) {
       x.cancel();
     }

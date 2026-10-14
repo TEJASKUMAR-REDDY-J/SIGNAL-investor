@@ -178,8 +178,12 @@ class _AddTransactionState extends State<AddTransaction> {
     if (d != null) setState(() => _date = DateTime.utc(d.year, d.month, d.day));
   }
 
+  // Rebuild when the shared portfolio recomputes (e.g. a newly added fund).
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context) =>
+      ValueListenableBuilder(valueListenable: s.portfolio, builder: (context, _, _) => _build(context));
+
+  Widget _build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
     final p = s.portfolio.value!;
     final inst = _inst == null ? null : p.instruments[_inst];

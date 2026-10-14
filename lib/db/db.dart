@@ -113,8 +113,8 @@ class MarketDb extends _$MarketDb {
         },
       );
 
-  Future<void> logFetch(String source, {Object? error, int rows = 0}) async {
-    final now = DateTime.now();
+  Future<void> logFetch(String source, {Object? error, int rows = 0, DateTime? at}) async {
+    final now = at ?? DateTime.now();
     final old = await (select(fetchLog)..where((f) => f.source.equals(source))).getSingleOrNull();
     await into(fetchLog).insertOnConflictUpdate(FetchLogCompanion.insert(
       source: source,

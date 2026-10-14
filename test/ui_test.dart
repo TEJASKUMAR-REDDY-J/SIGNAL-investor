@@ -93,7 +93,7 @@ void main() {
     await t.enterText(find.widgetWithText(TextFormField, 'NSE symbol'), 'reliance');
     await t.tap(find.widgetWithText(FilledButton, 'Add'));
     await settle(t);
-    final inst = await q(t, () => market.select(market.instruments).getSingle());
+    final inst = await q(t, () => (market.select(market.instruments)..where((i) => i.nseSymbol.equals('RELIANCE'))).getSingle());
     expect(inst.yahooTicker, 'RELIANCE.NS');
     expect(find.text('Reliance Industries'), findsOneWidget);
 

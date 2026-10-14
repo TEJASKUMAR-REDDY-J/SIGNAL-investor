@@ -1,9 +1,12 @@
+import 'dart:ui' show ImageFilter;
+
 import 'package:flutter/material.dart';
 
 import '../db/db.dart';
 import '../db/open_db.dart';
 import '../engine/money.dart';
 import '../engine/portfolio.dart';
+import '../pipeline/refresh.dart';
 import 'theme.dart';
 
 /// Everything a signed-in screen needs. One portfolio, computed once per change.
@@ -13,8 +16,15 @@ class Session {
   final MarketDb market;
   final ValueNotifier<Portfolio?> portfolio;
   final VoidCallback lock;
+  final refreshing = ValueNotifier(false);
+  final receipt = ValueNotifier<List<ReceiptLine>?>(null);
+  final lastRefresh = ValueNotifier<DateTime?>(null);
+  Future<void> Function({bool force})? refresh;
   Session(this.profile, this.db, this.market, this.portfolio, this.lock);
 }
+
+/// Tap the eye to blur every rupee amount (public places).
+final hideMoney = ValueNotifier(false);
 
 class Money extends StatelessWidget {
   final int paise;
@@ -28,12 +38,19 @@ class Money extends StatelessWidget {
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
     final s = rupees(paise, decimals: decimals);
-    return Text(signed && paise > 0 ? '+$s' : s,
+    final text = Text(signed && paise > 0 ? '+$s' : s,
         maxLines: 1,
         overflow: TextOverflow.fade,
         softWrap: false,
         style: (style ?? const TextStyle()).copyWith(
             fontFeatures: tabular, color: colored ? cs.signed(paise) : null));
+    return ValueListenableBuilder(
+      valueListenable: hideMoney,
+      builder: (context, hide, child) => hide
+          ? ImageFiltered(imageFilter: ImageFilter.blur(sigmaX: 7, sigmaY: 7), child: ExcludeSemantics(child: child!))
+          : child!,
+      child: text,
+    );
   }
 }
 

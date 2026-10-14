@@ -107,4 +107,7 @@ class MarketCalendar {
 const _dow = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
 const _mon = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
 
-const nse = MarketCalendar();
+/// Active calendar: bundled list plus any holidays fetched from NSE.
+var nse = const MarketCalendar();
+
+void loadHolidays(Map<String, String> fetched) => nse = MarketCalendar({...nseHolidays2026, ...fetched});
