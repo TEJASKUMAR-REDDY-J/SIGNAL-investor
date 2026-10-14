@@ -107,7 +107,8 @@ Future<List<String>> runAgents(
         momentum: idea?.momentum,
         news1: n1[id]?.points ?? 0,
         news7: n7[id]?.points ?? 0,
-        headline: (n1[id] ?? n7[id])?.latest?.title);
+        headline: (n1[id] ?? n7[id])?.latest?.title,
+        industry: listings[s]!.industry);
     priceRows.add((id, q.day, q.priceE4));
   }
   await m.batch((b) => b.insertAllOnConflictUpdate(m.prices, [
@@ -124,9 +125,13 @@ Future<List<String>> runAgents(
     try {
       final book = books[k]!;
       final weeklyFirst = k == AgentKind.weekly && !trades.any((t) => t.agent == k.name);
+      final daysLeft = tradingDaysLeft(today, nse.isTradingDay);
+      final rebLeft = rebalanceDaysLeft(today, nse.isTradingDay) + (weeklyFirst && !isFirstTradingDayOfWeek(today, nse.isTradingDay) ? 1 : 0);
       var plan = propose(k, book, cands, today,
           rebalanceDay: weeklyFirst || isFirstTradingDayOfWeek(today, nse.isTradingDay),
-          tradingDaysLeftInMonth: tradingDaysLeft(today, nse.isTradingDay));
+          tradingDaysLeftInMonth: daysLeft,
+          rebalanceDaysLeftInMonth: rebLeft);
+      final cap = dayBudget(k, book.monthRoom(date.substring(0, 7)), tradingDaysLeft: daysLeft, rebalanceDaysLeft: rebLeft);
       var summary = '';
       var ai = false;
       if (groqKey != null && (plan.shortlist.isNotEmpty || book.positions.isNotEmpty)) {
@@ -156,7 +161,7 @@ Future<List<String>> runAgents(
           ai = true;
         }
       }
-      final orders = enforce(book, plan, cands, today);
+      final orders = enforce(book, plan, cands, today, dayCapPaise: cap);
       final at = DateTime.now();
       await m.transaction(() async {
         for (final o in orders) {
@@ -194,13 +199,15 @@ Future<List<String>> runAgents(
 String _brief(AgentKind k, AgentBook book, AgentPlan plan, Map<int, AgentCand> cands, DateTime today, List<String> notes) {
   final cfg = agentConfigs[k]!;
   final month = fmtDay(today).substring(0, 7);
-  String row(AgentCand c) => '${c.symbol} | ${c.name} | ₹${(c.priceE4 / 10000).toStringAsFixed(2)} | 1d ${_pc(c.ret1)} | '
+  String row(AgentCand c) => '${c.symbol} | ${c.name} | ${c.industry} | ₹${(c.priceE4 / 10000).toStringAsFixed(2)} | 1d ${_pc(c.ret1)} | '
       '5d ${_pc(c.ret5)} | 1m ${_pc(c.ret20)} | advisor ${c.advisorScore == null ? 'fails filters' : (c.advisorScore! * 100).round()} | '
       'news24h ${c.news1} | news7d ${c.news7}${c.headline == null ? '' : ' | "${c.headline}"'}';
   return [
     'Agent: ${cfg.name}. Style: ${cfg.style}',
     'Today ${fmtDay(today)}. Cash ${_rs(book.cashPaise)}. New-money room this month ${_rs(book.monthRoom(month))} '
-        '(limit ₹4,00,000 net per month). At most ₹50,000 per stock today. Max ${cfg.maxHoldings} holdings.',
+        '(limit ₹4,00,000 net per month, spread across the month: buy no more than the plan total for today). '
+        'At most $agentMaxPerSector holdings per industry. '
+        'At most ₹50,000 per stock today. Max ${cfg.maxHoldings} holdings.',
     'Holdings:',
     if (book.positions.isEmpty) '(none)',
     for (final p in book.positions.values)
@@ -211,7 +218,7 @@ String _brief(AgentKind k, AgentBook book, AgentPlan plan, Map<int, AgentCand> c
     for (final s in plan.sells) 'SELL ${cands[s.instrumentId]?.symbol}: ${s.reason}',
     for (final b in plan.buys) 'BUY ${cands[b.instrumentId]?.symbol} ${_rs(b.amountPaise)}: ${b.reason}',
     if (plan.sells.isEmpty && plan.buys.isEmpty) '(nothing)',
-    'Shortlist (symbol | name | price | 1 day | 5 days | 1 month | advisor 0-100 | news points 24h | 7d | latest headline):',
+    'Shortlist (symbol | name | industry | price | 1 day | 5 days | 1 month | advisor 0-100 | news points 24h | 7d | latest headline):',
     for (final c in plan.shortlist) row(c),
     if (notes.isNotEmpty) 'Owner notes (newest first):',
     for (final x in notes) '- $x',

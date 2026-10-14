@@ -12,6 +12,7 @@ const agentStartCashPaise = 250000000; // Rs 25,00,000 each
 const agentMonthlyLimitPaise = 40000000; // Rs 4,00,000 net new money per agent per calendar month
 const agentPerStockDayPaise = 5000000; // Rs 50,000 per stock per day per agent
 const agentCostBps = 10; // 0.1% per trade: brokerage, STT and charges, roughly
+const agentMaxPerSector = 3; // holdings in one industry
 const agentRuleVersion = 'agents/1 2026-10-14';
 
 class AgentConfig {
@@ -61,8 +62,16 @@ class AgentCand {
   final double? quality, growth, momentum;
   final double news1, news7; // AI headline points, last 24 h and 7 days
   final String? headline; // latest labelled headline
+  final String industry;
   const AgentCand(this.instrumentId, this.symbol, this.name, this.priceE4, this.closesE4,
-      {this.advisorScore, this.quality, this.growth, this.momentum, this.news1 = 0, this.news7 = 0, this.headline});
+      {this.advisorScore,
+      this.quality,
+      this.growth,
+      this.momentum,
+      this.news1 = 0,
+      this.news7 = 0,
+      this.headline,
+      this.industry = ''});
 
   double _ret(int days) {
     if (closesE4.length <= days) return 0;
@@ -174,6 +183,24 @@ int tradingDaysLeft(DateTime day, bool Function(DateTime) isTradingDay) {
   return max(1, n);
 }
 
+/// Most new money an agent may put in today, so the month's room is spread out:
+/// monthly evenly over the trading days left, weekly over the rebalance days left,
+/// daily twice the even share (it recycles money by selling).
+int dayBudget(AgentKind k, int monthRoomPaise, {required int tradingDaysLeft, required int rebalanceDaysLeft}) => switch (k) {
+      AgentKind.monthly => (monthRoomPaise / max(1, tradingDaysLeft)).ceil(),
+      AgentKind.weekly => (monthRoomPaise / max(1, rebalanceDaysLeft)).ceil(),
+      AgentKind.daily => min(monthRoomPaise, (2 * monthRoomPaise / max(1, tradingDaysLeft)).ceil()),
+    };
+
+/// First trading days of a week from [day] to the end of its month, including [day] when it is one.
+int rebalanceDaysLeft(DateTime day, bool Function(DateTime) isTradingDay) {
+  var n = 0;
+  for (var d = day; d.month == day.month; d = d.add(const Duration(days: 1))) {
+    if (isTradingDay(d) && isFirstTradingDayOfWeek(d, isTradingDay)) n++;
+  }
+  return max(1, n);
+}
+
 double _score(AgentKind k, AgentCand c) => switch (k) {
       AgentKind.daily => 1.0 * c.news1 + 0.4 * c.news7 + 8 * c.ret5 + 15 * c.ret1,
       AgentKind.weekly => 6 * c.ret20 + 0.5 * c.news7 + (c.momentum ?? 0.5) + 0.5 * (c.growth ?? 0.5),
@@ -207,7 +234,7 @@ String _why(AgentKind k, AgentCand c) => switch (k) {
 
 /// The rule plan: exits first, then new buys sized to the day's limits.
 AgentPlan propose(AgentKind k, AgentBook book, Map<int, AgentCand> cands, DateTime today,
-    {required bool rebalanceDay, required int tradingDaysLeftInMonth}) {
+    {required bool rebalanceDay, required int tradingDaysLeftInMonth, int rebalanceDaysLeftInMonth = 1}) {
   final cfg = agentConfigs[k]!;
   final sells = <PlannedSell>[];
   for (final p in book.positions.values) {
@@ -245,9 +272,10 @@ AgentPlan propose(AgentKind k, AgentBook book, Map<int, AgentCand> cands, DateTi
   final buyDay = k != AgentKind.weekly || rebalanceDay;
   if (buyDay) {
     final month = fmtDay(today).substring(0, 7);
-    var budget = min(book.monthRoom(month), book.cashPaise);
-    // Monthly spreads the month's room across the trading days left.
-    if (k == AgentKind.monthly) budget = min(budget, (book.monthRoom(month) / tradingDaysLeftInMonth).ceil());
+    var budget = min(
+        book.cashPaise,
+        dayBudget(k, book.monthRoom(month),
+            tradingDaysLeft: tradingDaysLeftInMonth, rebalanceDaysLeft: rebalanceDaysLeftInMonth));
     final held = book.positions.length - sold.length;
     var slots = max(0, cfg.maxHoldings - held);
     for (final c in shortlist) {
@@ -267,12 +295,14 @@ AgentPlan propose(AgentKind k, AgentBook book, Map<int, AgentCand> cands, DateTi
 /// Hard limits, whatever the plan says: whole shares, Rs 50,000 per stock per day,
 /// Rs 4 lakh net new money per calendar month, never more than the cash, sells only
 /// what is held. Sells run first so their cash and month room can fund the buys.
-List<AgentOrder> enforce(AgentBook book, AgentPlan plan, Map<int, AgentCand> cands, DateTime today) {
+/// [dayCapPaise]: total new buys allowed today (see [dayBudget]); null = no daily cap.
+List<AgentOrder> enforce(AgentBook book, AgentPlan plan, Map<int, AgentCand> cands, DateTime today, {int? dayCapPaise}) {
   final date = fmtDay(today);
   final month = date.substring(0, 7);
   final out = <AgentOrder>[];
   var cash = book.cashPaise;
   var room = book.monthRoom(month);
+  var dayLeftTotal = dayCapPaise ?? (1 << 52);
   for (final s in plan.sells) {
     final p = book.positions[s.instrumentId];
     final c = cands[s.instrumentId];
@@ -284,20 +314,31 @@ List<AgentOrder> enforce(AgentBook book, AgentPlan plan, Map<int, AgentCand> can
     room = min(agentMonthlyLimitPaise, room + v);
   }
   final todayBuys = <int, int>{};
+  // Sector spread: at most [agentMaxPerSector] holdings per industry after today's trades.
+  final sold = {for (final o in out) o.instrumentId};
+  final perSector = <String, int>{};
+  for (final id in book.positions.keys) {
+    final ind = cands[id]?.industry ?? '';
+    if (ind.isNotEmpty && !sold.contains(id)) perSector[ind] = (perSector[ind] ?? 0) + 1;
+  }
   for (final b in plan.buys) {
     final c = cands[b.instrumentId];
     if (c == null || c.priceE4 <= 0) continue;
+    final isNew = !book.positions.containsKey(b.instrumentId) && !todayBuys.containsKey(b.instrumentId);
+    if (isNew && c.industry.isNotEmpty && (perSector[c.industry] ?? 0) >= agentMaxPerSector) continue;
     final dayLeft = agentPerStockDayPaise - book.boughtOn(date, b.instrumentId) - (todayBuys[b.instrumentId] ?? 0);
-    var amount = [b.amountPaise, dayLeft, room, cash - mulDiv(cash, agentCostBps, 10000)].reduce(min);
+    var amount = [b.amountPaise, dayLeft, room, dayLeftTotal, cash - mulDiv(cash, agentCostBps, 10000)].reduce(min);
     final shares = amount <= 0 ? 0 : amount * 100 ~/ c.priceE4; // whole shares: paise*1e4 / priceE4*100
     if (shares <= 0) continue;
     final units4 = shares * unitScale;
     final v = valuePaise(units4, c.priceE4);
     final fees = mulDiv(v, agentCostBps, 10000);
-    if (v + fees > cash || v > room || v > dayLeft) continue;
+    if (v + fees > cash || v > room || v > dayLeft || v > dayLeftTotal) continue;
     out.add(AgentOrder(b.instrumentId, 'buy', units4, c.priceE4, fees, b.reason));
     cash -= v + fees;
     room -= v;
+    dayLeftTotal -= v;
+    if (isNew && c.industry.isNotEmpty) perSector[c.industry] = (perSector[c.industry] ?? 0) + 1;
     todayBuys[b.instrumentId] = (todayBuys[b.instrumentId] ?? 0) + v;
   }
   return out;

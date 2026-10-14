@@ -119,6 +119,30 @@ void main() {
     });
   });
 
+  test('money is spread across the month: daily cap per agent', () {
+    expect(dayBudget(AgentKind.monthly, agentMonthlyLimitPaise, tradingDaysLeft: 13, rebalanceDaysLeft: 3), 3076924);
+    expect(dayBudget(AgentKind.weekly, agentMonthlyLimitPaise, tradingDaysLeft: 13, rebalanceDaysLeft: 3), 13333334);
+    expect(dayBudget(AgentKind.daily, agentMonthlyLimitPaise, tradingDaysLeft: 13, rebalanceDaysLeft: 3), 6153847);
+    expect(dayBudget(AgentKind.daily, 1000000, tradingDaysLeft: 1, rebalanceDaysLeft: 1), 1000000); // never above the room
+    bool td(DateTime d) => d.weekday < 6;
+    expect(rebalanceDaysLeft(DateTime.utc(2026, 10, 14), td), 2); // 19 and 26 Oct
+    expect(rebalanceDaysLeft(DateTime.utc(2026, 10, 12), td), 3); // 12, 19, 26 Oct
+    // The cap binds in enforce: an AI asking for 8 x Rs 50,000 gets Rs 30,769 in total.
+    final c = {for (var i = 1; i <= 8; i++) i: cand(i, 100)};
+    final o = enforce(AgentBook(const []), AgentPlan([for (var i = 1; i <= 8; i++) PlannedBuy(i, 5000000, 'x')], const [], const []), c,
+        today, dayCapPaise: 3076924);
+    expect(o.fold(0, (a, x) => a + x.units4 * x.priceE4 ~/ 1000000), lessThanOrEqualTo(3076924));
+    expect(o, hasLength(1));
+  });
+
+  test('sector spread: at most 3 holdings per industry', () {
+    AgentCand it(int id) => AgentCand(id, 'S$id', 'IT $id', 1000000, List.filled(21, 1000000), industry: 'Information Technology');
+    final c = {for (var i = 1; i <= 5; i++) i: it(i), 6: AgentCand(6, 'S6', 'Bank', 1000000, List.filled(21, 1000000), industry: 'Financial Services')};
+    final o = enforce(AgentBook([('2026-10-13', 'buy', 1, 10 * 10000, 100 * 10000, 0)]),
+        AgentPlan([for (var i = 2; i <= 6; i++) PlannedBuy(i, 1000000, 'x')], const [], const []), c, today);
+    expect(o.map((x) => x.instrumentId), [2, 3, 6]); // 1 held + 2 new IT = 3; bank still allowed
+  });
+
   test('AI decision: only shortlisted / held symbols, amounts capped', () {
     final d = validateDecision(
         '{"buys":[{"symbol":"tcs","rupees":90000,"reason":"new deal"},{"symbol":"EVIL","rupees":1000}],'
