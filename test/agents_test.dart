@@ -181,6 +181,7 @@ void main() {
     }
     await m.into(m.agentNotes).insert(AgentNotesCompanion.insert(at: DateTime.utc(2026, 10, 14), body: 'Prefer AAA'));
     String? brief;
+    String? toolReply;
     final net = Net(client: MockClient((r) async {
       if (r.url.path.contains('spark')) {
         final syms = r.url.queryParameters['symbols']!.split(',');
@@ -196,7 +197,7 @@ void main() {
                           'meta': {'regularMarketPrice': 125.0, 'chartPreviousClose': 90.0, 'regularMarketTime': 1791966626},
                           'indicators': {
                             'quote': [
-                              {'close': [for (var i = 0; i <= 20; i++) 100.0 + i]}
+                              {'close': [for (var i = 0; i < 260; i++) 70.0 + i * 0.2 + (i % 2 == 0 ? 1.5 : -1.5)]}
                             ]
                           }
                         }
@@ -208,20 +209,32 @@ void main() {
             200);
       }
       if (r.url.host == 'api.groq.com') {
-        brief = ((jsonDecode(r.body) as Map)['messages'] as List).last['content'] as String;
+        final msgs = (jsonDecode(r.body) as Map)['messages'] as List;
+        brief ??= msgs[1]['content'] as String;
+        // Round 1: look something up. Round 2: decide.
+        final looked = msgs.any((x) => x['role'] == 'tool');
+        if (looked) toolReply = msgs.lastWhere((x) => x['role'] == 'tool')['content'] as String;
+        Map call(String name, Map args) => {'id': 'c$name', 'type': 'function', 'function': {'name': name, 'arguments': jsonEncode(args)}};
         return http.Response(
             jsonEncode({
               'choices': [
                 {
                   'message': {
-                    'content': jsonEncode({
-                      'buys': [
-                        {'symbol': 'AAA', 'rupees': 80000, 'reason': 'owner prefers it, strong growth'},
-                        {'symbol': 'ZZZ', 'rupees': 5000, 'reason': 'not allowed'},
-                      ],
-                      'sells': [],
-                      'summary': 'Bought AAA.'
-                    })
+                    'content': '',
+                    'tool_calls': [
+                      looked
+                          ? call('submit_decision', {
+                              'buys': [
+                                {'symbol': 'AAA', 'rupees': 80000, 'conviction': 4, 'reason': 'owner prefers it, strong growth'},
+                                {'symbol': 'ZZZ', 'rupees': 5000, 'reason': 'not allowed'},
+                              ],
+                              'sells': [],
+                              'bull_case': 'Rising trend and growth.',
+                              'bear_case': 'Could be stretched.',
+                              'summary': 'Bought AAA.'
+                            })
+                          : call('get_technicals', {'symbol': 'AAA'}),
+                    ],
                   }
                 }
               ]
@@ -235,6 +248,7 @@ void main() {
     expect(lines, hasLength(3));
     expect(brief, contains('Prefer AAA'));
     expect(brief, contains('Shortlist'));
+    expect(toolReply, contains('rsi14')); // the tool ran locally and answered
     final trades = await m.select(m.agentTrades).get();
     expect(trades, isNotEmpty);
     for (final k in AgentKind.values) {
@@ -246,7 +260,8 @@ void main() {
     }
     final runs = await m.select(m.agentRuns).get();
     expect(runs.map((r) => r.agent).toSet(), {'daily', 'weekly', 'monthly'});
-    expect(runs.every((r) => r.ai && r.summary == 'Bought AAA.'), isTrue);
+    expect(runs.every((r) => r.ai && r.summary == 'Bought AAA.' && r.bull == 'Rising trend and growth.' && r.toolCalls == 1), isTrue);
+    expect(runs.first.regime, isNotNull);
     // Same day again: nothing.
     expect(await runAgents(m, net, groqKey: 'k', nowUtc: now.add(const Duration(hours: 2))), isEmpty);
     // Before 09:45 IST or on a weekend: no trading.

@@ -189,3 +189,31 @@ Map<String, (Quote, List<int>)> parseSparkHistory(String body) {
   }
   return out;
 }
+
+/// Daily highs, lows, closes and volumes (oldest first) for ATR and volume surges.
+class Ohlc {
+  final List<double> high, low, close, volume;
+  const Ohlc(this.high, this.low, this.close, this.volume);
+}
+
+Ohlc parseYahooOhlc(String body) {
+  final r = ((jsonDecode(body) as Map)['chart'] as Map)['result'] as List;
+  final q = (((r.first as Map)['indicators'] as Map)['quote'] as List).first as Map;
+  final h = <double>[], l = <double>[], c = <double>[], v = <double>[];
+  final n = (q['close'] as List).length;
+  for (var i = 0; i < n; i++) {
+    final hi = (q['high'] as List)[i], lo = (q['low'] as List)[i], cl = (q['close'] as List)[i], vo = (q['volume'] as List)[i];
+    if (hi is! num || lo is! num || cl is! num) continue;
+    h.add(hi.toDouble());
+    l.add(lo.toDouble());
+    c.add(cl.toDouble());
+    v.add(vo is num ? vo.toDouble() : 0);
+  }
+  return Ohlc(h, l, c, v);
+}
+
+Future<Ohlc> yahooOhlc(Net n, String ticker, {String range = '6mo'}) async {
+  if (!RegExp(r'^[\^A-Z0-9&.\-]{1,25}$').hasMatch(ticker)) throw FetchError('yahoo', 'bad ticker');
+  final r = await n.get('yahoo', Uri.https('query1.finance.yahoo.com', '/v8/finance/chart/$ticker', {'range': range, 'interval': '1d'}));
+  return parseYahooOhlc(r.body);
+}

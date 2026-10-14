@@ -1,7 +1,9 @@
 import 'dart:math';
 
+import 'indicators.dart';
 import 'lots.dart';
 import 'money.dart';
+import 'regime.dart';
 
 // Three autonomous paper portfolios. Rules shortlist and size; an AI may choose
 // among the shortlist; [enforce] applies the hard limits no plan can exceed.
@@ -13,7 +15,7 @@ const agentMonthlyLimitPaise = 40000000; // Rs 4,00,000 net new money per agent 
 const agentPerStockDayPaise = 5000000; // Rs 50,000 per stock per day per agent
 const agentCostBps = 10; // 0.1% per trade: brokerage, STT and charges, roughly
 const agentMaxPerSector = 3; // holdings in one industry
-const agentRuleVersion = 'agents/1 2026-10-14';
+const agentRuleVersion = 'agents/2 2026-10-14'; // technicals, regime, volatility sizing
 
 class AgentConfig {
   final String name;
@@ -63,6 +65,7 @@ class AgentCand {
   final double news1, news7; // AI headline points, last 24 h and 7 days
   final String? headline; // latest labelled headline
   final String industry;
+  final Technicals? tech; // indicators from about a year of closes
   const AgentCand(this.instrumentId, this.symbol, this.name, this.priceE4, this.closesE4,
       {this.advisorScore,
       this.quality,
@@ -71,7 +74,8 @@ class AgentCand {
       this.news1 = 0,
       this.news7 = 0,
       this.headline,
-      this.industry = ''});
+      this.industry = '',
+      this.tech});
 
   double _ret(int days) {
     if (closesE4.length <= days) return 0;
@@ -201,28 +205,55 @@ int rebalanceDaysLeft(DateTime day, bool Function(DateTime) isTradingDay) {
   return max(1, n);
 }
 
-double _score(AgentKind k, AgentCand c) => switch (k) {
-      AgentKind.daily => 1.0 * c.news1 + 0.4 * c.news7 + 8 * c.ret5 + 15 * c.ret1,
-      AgentKind.weekly => 6 * c.ret20 + 0.5 * c.news7 + (c.momentum ?? 0.5) + 0.5 * (c.growth ?? 0.5),
-      AgentKind.monthly => (c.advisorScore ?? 0) + 0.15 * c.news7.clamp(-2, 2),
-    };
+double _score(AgentKind k, AgentCand c) {
+  final t = c.tech;
+  final macdUp = (t?.macdHist ?? 0) > 0 ? 1.0 : 0.0;
+  final rs = (t?.relStrength3m ?? 0).clamp(-0.5, 0.5);
+  return switch (k) {
+    AgentKind.daily => 1.0 * c.news1 + 0.4 * c.news7 + 8 * c.ret5 + 15 * c.ret1 + 0.3 * macdUp + 0.5 * ((t?.volumeRatio ?? 1) - 1).clamp(0, 2),
+    AgentKind.weekly => 6 * c.ret20 + 0.5 * c.news7 + (c.momentum ?? 0.5) + 0.5 * (c.growth ?? 0.5) + 2 * rs + 0.3 * macdUp,
+    AgentKind.monthly => (c.advisorScore ?? 0) + 0.15 * c.news7.clamp(-2, 2) + 0.1 * ((t?.uptrend ?? false) ? 1 : 0),
+  };
+}
 
-bool _eligible(AgentKind k, AgentCand c) => switch (k) {
-      // Fresh positive catalyst or a strong day, inside an uptrend, no bad news this week.
-      AgentKind.daily => (c.news1 > 0 || c.ret1 > 0.01) && c.ret20 > 0 && c.news7 >= 0,
-      AgentKind.weekly => c.ret20 > 0.02 && c.news7 >= 0 && (c.advisorScore != null || c.news7 > 0.5),
-      AgentKind.monthly => c.advisorScore != null && c.news7 > -1,
-    };
+bool _eligible(AgentKind k, AgentCand c) {
+  final t = c.tech;
+  final rsi = t?.rsi14;
+  return switch (k) {
+    // Fresh positive catalyst or a strong day, inside an uptrend, no bad news this week, not overbought.
+    AgentKind.daily => (c.news1 > 0 || c.ret1 > 0.01) && c.ret20 > 0 && c.news7 >= 0 && (rsi == null || rsi < 75),
+    // Trend followers: rising 1-month and above the 50-day average, momentum not yet stretched.
+    AgentKind.weekly => c.ret20 > 0.02 &&
+        c.news7 >= 0 &&
+        (c.advisorScore != null || c.news7 > 0.5) &&
+        (t?.aboveSma50 ?? true) &&
+        (rsi == null || (rsi >= 45 && rsi <= 75)),
+    // Quality at a fair moment: passes the filters, no bad news, not in a collapse.
+    AgentKind.monthly => c.advisorScore != null && c.news7 > -1 && (t?.ret60 ?? 0) > -0.2,
+  };
+}
+
+String _techNote(AgentCand c) {
+  final t = c.tech;
+  if (t == null) return '';
+  return [
+    if (t.rsi14 != null) 'RSI ${t.rsi14!.round()}',
+    if (t.macdHist != null) 'MACD ${t.macdHist! >= 0 ? 'rising' : 'falling'}',
+    if (t.relStrength3m != null) '${t.relStrength3m! >= 0 ? 'beating' : 'lagging'} NIFTY by ${(t.relStrength3m!.abs() * 100).toStringAsFixed(0)}% over 3 months',
+  ].join(', ');
+}
 
 String _why(AgentKind k, AgentCand c) => switch (k) {
       AgentKind.daily => [
           if (c.news1 > 0) 'good news today${c.headline == null ? '' : ': ${c.headline}'}',
           'up ${_pc(c.ret1)} today, ${_pc(c.ret5)} in 5 days',
+          if (_techNote(c).isNotEmpty) _techNote(c),
         ].join('; '),
       AgentKind.weekly => [
           '1-month trend ${_pc(c.ret20)}',
           if (c.news7 > 0) 'news this week +${c.news7.toStringAsFixed(1)}',
           if (c.growth != null) 'growth rank ${(c.growth! * 100).round()}',
+          if (_techNote(c).isNotEmpty) _techNote(c),
         ].join('; '),
       AgentKind.monthly => [
           'Advisor score ${((c.advisorScore ?? 0) * 100).round()}',
@@ -234,7 +265,10 @@ String _why(AgentKind k, AgentCand c) => switch (k) {
 
 /// The rule plan: exits first, then new buys sized to the day's limits.
 AgentPlan propose(AgentKind k, AgentBook book, Map<int, AgentCand> cands, DateTime today,
-    {required bool rebalanceDay, required int tradingDaysLeftInMonth, int rebalanceDaysLeftInMonth = 1}) {
+    {required bool rebalanceDay,
+    required int tradingDaysLeftInMonth,
+    int rebalanceDaysLeftInMonth = 1,
+    double budgetScale = 1.0}) {
   final cfg = agentConfigs[k]!;
   final sells = <PlannedSell>[];
   for (final p in book.positions.values) {
@@ -255,6 +289,10 @@ AgentPlan propose(AgentKind k, AgentBook book, Map<int, AgentCand> cands, DateTi
       why = 'held $days days, time to recycle (${_pc(pnl)})';
     } else if (k == AgentKind.weekly && rebalanceDay && c.ret20 < 0) {
       why = 'weekly review: 1-month trend turned ${_pc(c.ret20)}';
+    } else if (k == AgentKind.weekly && c.tech?.aboveSma50 == false && pnl < 0) {
+      why = 'broke below its 50-day average (${_pc(pnl)})';
+    } else if (k == AgentKind.daily && (c.tech?.rsi14 ?? 0) > 80 && pnl > 0) {
+      why = 'overbought (RSI ${c.tech!.rsi14!.round()}): booked ${_pc(pnl)}';
     } else if (k == AgentKind.monthly && c.advisorScore == null && pnl < -0.1) {
       why = 'no longer passes the quality checks (${_pc(pnl)})';
     }
@@ -274,8 +312,9 @@ AgentPlan propose(AgentKind k, AgentBook book, Map<int, AgentCand> cands, DateTi
     final month = fmtDay(today).substring(0, 7);
     var budget = min(
         book.cashPaise,
-        dayBudget(k, book.monthRoom(month),
-            tradingDaysLeft: tradingDaysLeftInMonth, rebalanceDaysLeft: rebalanceDaysLeftInMonth));
+        (dayBudget(k, book.monthRoom(month), tradingDaysLeft: tradingDaysLeftInMonth, rebalanceDaysLeft: rebalanceDaysLeftInMonth) *
+                budgetScale)
+            .round());
     final held = book.positions.length - sold.length;
     var slots = max(0, cfg.maxHoldings - held);
     for (final c in shortlist) {
@@ -283,7 +322,8 @@ AgentPlan propose(AgentKind k, AgentBook book, Map<int, AgentCand> cands, DateTi
       final owned = book.positions.containsKey(c.instrumentId);
       if (!owned && slots == 0) continue;
       if (owned && k != AgentKind.monthly) continue; // traders do not average up/down
-      final amount = min(budget, agentPerStockDayPaise);
+      // Jumpier stocks get smaller positions (volatility targeting).
+      final amount = min(budget, volScaled(agentPerStockDayPaise, c.tech?.vol20));
       buys.add(PlannedBuy(c.instrumentId, amount, _why(k, c)));
       budget -= amount;
       if (!owned) slots--;

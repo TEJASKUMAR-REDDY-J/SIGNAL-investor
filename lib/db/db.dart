@@ -123,6 +123,19 @@ class AgentRuns extends Table {
   IntColumn get valuePaise => integer()(); // cash + holdings after the run
   IntColumn get cashPaise => integer()();
   BoolColumn get ai => boolean().withDefault(const Constant(false))(); // AI reviewed the plan
+  TextColumn get bull => text().nullable()(); // the AI's case for its trades
+  TextColumn get bear => text().nullable()(); // and against
+  TextColumn get regime => text().nullable()(); // market mood that day
+  IntColumn get toolCalls => integer().withDefault(const Constant(0))(); // data look-ups the AI made
+}
+
+/// Lessons an agent wrote for itself after reviewing its own trades (reflection memory).
+@DataClassName('AgentMemory')
+class AgentMemories extends Table {
+  IntColumn get id => integer().autoIncrement()();
+  TextColumn get agent => text()();
+  DateTimeColumn get at => dateTime()();
+  TextColumn get body => text()();
 }
 
 /// What the user tells the agents; every run reads these.
@@ -134,12 +147,13 @@ class AgentNotes extends Table {
 }
 
 @DriftDatabase(tables: [
-  Instruments, Prices, NewsItems, Filings, FetchLog, Holidays, Universe, Fundamentals, AgentTrades, AgentRuns, AgentNotes
+  Instruments, Prices, NewsItems, Filings, FetchLog, Holidays, Universe, Fundamentals, AgentTrades, AgentRuns, AgentNotes,
+  AgentMemories
 ])
 class MarketDb extends _$MarketDb {
   MarketDb(super.e);
   @override
-  int get schemaVersion => 3;
+  int get schemaVersion => 4;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -154,6 +168,13 @@ class MarketDb extends _$MarketDb {
             await m.createTable(agentRuns);
             await m.createTable(agentNotes);
           }
+          if (from >= 3 && from < 4) {
+            await m.addColumn(agentRuns, agentRuns.bull);
+            await m.addColumn(agentRuns, agentRuns.bear);
+            await m.addColumn(agentRuns, agentRuns.regime);
+            await m.addColumn(agentRuns, agentRuns.toolCalls);
+          }
+          if (from < 4) await m.createTable(agentMemories);
         },
       );
 

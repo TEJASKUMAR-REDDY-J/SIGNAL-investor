@@ -3670,6 +3670,45 @@ class $AgentRunsTable extends AgentRuns
     ),
     defaultValue: const Constant(false),
   );
+  static const VerificationMeta _bullMeta = const VerificationMeta('bull');
+  @override
+  late final GeneratedColumn<String> bull = GeneratedColumn<String>(
+    'bull',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _bearMeta = const VerificationMeta('bear');
+  @override
+  late final GeneratedColumn<String> bear = GeneratedColumn<String>(
+    'bear',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _regimeMeta = const VerificationMeta('regime');
+  @override
+  late final GeneratedColumn<String> regime = GeneratedColumn<String>(
+    'regime',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _toolCallsMeta = const VerificationMeta(
+    'toolCalls',
+  );
+  @override
+  late final GeneratedColumn<int> toolCalls = GeneratedColumn<int>(
+    'tool_calls',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+    defaultValue: const Constant(0),
+  );
   @override
   List<GeneratedColumn> get $columns => [
     id,
@@ -3680,6 +3719,10 @@ class $AgentRunsTable extends AgentRuns
     valuePaise,
     cashPaise,
     ai,
+    bull,
+    bear,
+    regime,
+    toolCalls,
   ];
   @override
   String get aliasedName => _alias ?? actualTableName;
@@ -3744,6 +3787,30 @@ class $AgentRunsTable extends AgentRuns
     if (data.containsKey('ai')) {
       context.handle(_aiMeta, ai.isAcceptableOrUnknown(data['ai']!, _aiMeta));
     }
+    if (data.containsKey('bull')) {
+      context.handle(
+        _bullMeta,
+        bull.isAcceptableOrUnknown(data['bull']!, _bullMeta),
+      );
+    }
+    if (data.containsKey('bear')) {
+      context.handle(
+        _bearMeta,
+        bear.isAcceptableOrUnknown(data['bear']!, _bearMeta),
+      );
+    }
+    if (data.containsKey('regime')) {
+      context.handle(
+        _regimeMeta,
+        regime.isAcceptableOrUnknown(data['regime']!, _regimeMeta),
+      );
+    }
+    if (data.containsKey('tool_calls')) {
+      context.handle(
+        _toolCallsMeta,
+        toolCalls.isAcceptableOrUnknown(data['tool_calls']!, _toolCallsMeta),
+      );
+    }
     return context;
   }
 
@@ -3785,6 +3852,22 @@ class $AgentRunsTable extends AgentRuns
         DriftSqlType.bool,
         data['${effectivePrefix}ai'],
       )!,
+      bull: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}bull'],
+      ),
+      bear: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}bear'],
+      ),
+      regime: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}regime'],
+      ),
+      toolCalls: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}tool_calls'],
+      )!,
     );
   }
 
@@ -3803,6 +3886,10 @@ class AgentRun extends DataClass implements Insertable<AgentRun> {
   final int valuePaise;
   final int cashPaise;
   final bool ai;
+  final String? bull;
+  final String? bear;
+  final String? regime;
+  final int toolCalls;
   const AgentRun({
     required this.id,
     required this.agent,
@@ -3812,6 +3899,10 @@ class AgentRun extends DataClass implements Insertable<AgentRun> {
     required this.valuePaise,
     required this.cashPaise,
     required this.ai,
+    this.bull,
+    this.bear,
+    this.regime,
+    required this.toolCalls,
   });
   @override
   Map<String, Expression> toColumns(bool nullToAbsent) {
@@ -3824,6 +3915,16 @@ class AgentRun extends DataClass implements Insertable<AgentRun> {
     map['value_paise'] = Variable<int>(valuePaise);
     map['cash_paise'] = Variable<int>(cashPaise);
     map['ai'] = Variable<bool>(ai);
+    if (!nullToAbsent || bull != null) {
+      map['bull'] = Variable<String>(bull);
+    }
+    if (!nullToAbsent || bear != null) {
+      map['bear'] = Variable<String>(bear);
+    }
+    if (!nullToAbsent || regime != null) {
+      map['regime'] = Variable<String>(regime);
+    }
+    map['tool_calls'] = Variable<int>(toolCalls);
     return map;
   }
 
@@ -3837,6 +3938,12 @@ class AgentRun extends DataClass implements Insertable<AgentRun> {
       valuePaise: Value(valuePaise),
       cashPaise: Value(cashPaise),
       ai: Value(ai),
+      bull: bull == null && nullToAbsent ? const Value.absent() : Value(bull),
+      bear: bear == null && nullToAbsent ? const Value.absent() : Value(bear),
+      regime: regime == null && nullToAbsent
+          ? const Value.absent()
+          : Value(regime),
+      toolCalls: Value(toolCalls),
     );
   }
 
@@ -3854,6 +3961,10 @@ class AgentRun extends DataClass implements Insertable<AgentRun> {
       valuePaise: serializer.fromJson<int>(json['valuePaise']),
       cashPaise: serializer.fromJson<int>(json['cashPaise']),
       ai: serializer.fromJson<bool>(json['ai']),
+      bull: serializer.fromJson<String?>(json['bull']),
+      bear: serializer.fromJson<String?>(json['bear']),
+      regime: serializer.fromJson<String?>(json['regime']),
+      toolCalls: serializer.fromJson<int>(json['toolCalls']),
     );
   }
   @override
@@ -3868,6 +3979,10 @@ class AgentRun extends DataClass implements Insertable<AgentRun> {
       'valuePaise': serializer.toJson<int>(valuePaise),
       'cashPaise': serializer.toJson<int>(cashPaise),
       'ai': serializer.toJson<bool>(ai),
+      'bull': serializer.toJson<String?>(bull),
+      'bear': serializer.toJson<String?>(bear),
+      'regime': serializer.toJson<String?>(regime),
+      'toolCalls': serializer.toJson<int>(toolCalls),
     };
   }
 
@@ -3880,6 +3995,10 @@ class AgentRun extends DataClass implements Insertable<AgentRun> {
     int? valuePaise,
     int? cashPaise,
     bool? ai,
+    Value<String?> bull = const Value.absent(),
+    Value<String?> bear = const Value.absent(),
+    Value<String?> regime = const Value.absent(),
+    int? toolCalls,
   }) => AgentRun(
     id: id ?? this.id,
     agent: agent ?? this.agent,
@@ -3889,6 +4008,10 @@ class AgentRun extends DataClass implements Insertable<AgentRun> {
     valuePaise: valuePaise ?? this.valuePaise,
     cashPaise: cashPaise ?? this.cashPaise,
     ai: ai ?? this.ai,
+    bull: bull.present ? bull.value : this.bull,
+    bear: bear.present ? bear.value : this.bear,
+    regime: regime.present ? regime.value : this.regime,
+    toolCalls: toolCalls ?? this.toolCalls,
   );
   AgentRun copyWithCompanion(AgentRunsCompanion data) {
     return AgentRun(
@@ -3902,6 +4025,10 @@ class AgentRun extends DataClass implements Insertable<AgentRun> {
           : this.valuePaise,
       cashPaise: data.cashPaise.present ? data.cashPaise.value : this.cashPaise,
       ai: data.ai.present ? data.ai.value : this.ai,
+      bull: data.bull.present ? data.bull.value : this.bull,
+      bear: data.bear.present ? data.bear.value : this.bear,
+      regime: data.regime.present ? data.regime.value : this.regime,
+      toolCalls: data.toolCalls.present ? data.toolCalls.value : this.toolCalls,
     );
   }
 
@@ -3915,14 +4042,30 @@ class AgentRun extends DataClass implements Insertable<AgentRun> {
           ..write('summary: $summary, ')
           ..write('valuePaise: $valuePaise, ')
           ..write('cashPaise: $cashPaise, ')
-          ..write('ai: $ai')
+          ..write('ai: $ai, ')
+          ..write('bull: $bull, ')
+          ..write('bear: $bear, ')
+          ..write('regime: $regime, ')
+          ..write('toolCalls: $toolCalls')
           ..write(')'))
         .toString();
   }
 
   @override
-  int get hashCode =>
-      Object.hash(id, agent, date, at, summary, valuePaise, cashPaise, ai);
+  int get hashCode => Object.hash(
+    id,
+    agent,
+    date,
+    at,
+    summary,
+    valuePaise,
+    cashPaise,
+    ai,
+    bull,
+    bear,
+    regime,
+    toolCalls,
+  );
   @override
   bool operator ==(Object other) =>
       identical(this, other) ||
@@ -3934,7 +4077,11 @@ class AgentRun extends DataClass implements Insertable<AgentRun> {
           other.summary == this.summary &&
           other.valuePaise == this.valuePaise &&
           other.cashPaise == this.cashPaise &&
-          other.ai == this.ai);
+          other.ai == this.ai &&
+          other.bull == this.bull &&
+          other.bear == this.bear &&
+          other.regime == this.regime &&
+          other.toolCalls == this.toolCalls);
 }
 
 class AgentRunsCompanion extends UpdateCompanion<AgentRun> {
@@ -3946,6 +4093,10 @@ class AgentRunsCompanion extends UpdateCompanion<AgentRun> {
   final Value<int> valuePaise;
   final Value<int> cashPaise;
   final Value<bool> ai;
+  final Value<String?> bull;
+  final Value<String?> bear;
+  final Value<String?> regime;
+  final Value<int> toolCalls;
   const AgentRunsCompanion({
     this.id = const Value.absent(),
     this.agent = const Value.absent(),
@@ -3955,6 +4106,10 @@ class AgentRunsCompanion extends UpdateCompanion<AgentRun> {
     this.valuePaise = const Value.absent(),
     this.cashPaise = const Value.absent(),
     this.ai = const Value.absent(),
+    this.bull = const Value.absent(),
+    this.bear = const Value.absent(),
+    this.regime = const Value.absent(),
+    this.toolCalls = const Value.absent(),
   });
   AgentRunsCompanion.insert({
     this.id = const Value.absent(),
@@ -3965,6 +4120,10 @@ class AgentRunsCompanion extends UpdateCompanion<AgentRun> {
     required int valuePaise,
     required int cashPaise,
     this.ai = const Value.absent(),
+    this.bull = const Value.absent(),
+    this.bear = const Value.absent(),
+    this.regime = const Value.absent(),
+    this.toolCalls = const Value.absent(),
   }) : agent = Value(agent),
        date = Value(date),
        at = Value(at),
@@ -3980,6 +4139,10 @@ class AgentRunsCompanion extends UpdateCompanion<AgentRun> {
     Expression<int>? valuePaise,
     Expression<int>? cashPaise,
     Expression<bool>? ai,
+    Expression<String>? bull,
+    Expression<String>? bear,
+    Expression<String>? regime,
+    Expression<int>? toolCalls,
   }) {
     return RawValuesInsertable({
       if (id != null) 'id': id,
@@ -3990,6 +4153,10 @@ class AgentRunsCompanion extends UpdateCompanion<AgentRun> {
       if (valuePaise != null) 'value_paise': valuePaise,
       if (cashPaise != null) 'cash_paise': cashPaise,
       if (ai != null) 'ai': ai,
+      if (bull != null) 'bull': bull,
+      if (bear != null) 'bear': bear,
+      if (regime != null) 'regime': regime,
+      if (toolCalls != null) 'tool_calls': toolCalls,
     });
   }
 
@@ -4002,6 +4169,10 @@ class AgentRunsCompanion extends UpdateCompanion<AgentRun> {
     Value<int>? valuePaise,
     Value<int>? cashPaise,
     Value<bool>? ai,
+    Value<String?>? bull,
+    Value<String?>? bear,
+    Value<String?>? regime,
+    Value<int>? toolCalls,
   }) {
     return AgentRunsCompanion(
       id: id ?? this.id,
@@ -4012,6 +4183,10 @@ class AgentRunsCompanion extends UpdateCompanion<AgentRun> {
       valuePaise: valuePaise ?? this.valuePaise,
       cashPaise: cashPaise ?? this.cashPaise,
       ai: ai ?? this.ai,
+      bull: bull ?? this.bull,
+      bear: bear ?? this.bear,
+      regime: regime ?? this.regime,
+      toolCalls: toolCalls ?? this.toolCalls,
     );
   }
 
@@ -4042,6 +4217,18 @@ class AgentRunsCompanion extends UpdateCompanion<AgentRun> {
     if (ai.present) {
       map['ai'] = Variable<bool>(ai.value);
     }
+    if (bull.present) {
+      map['bull'] = Variable<String>(bull.value);
+    }
+    if (bear.present) {
+      map['bear'] = Variable<String>(bear.value);
+    }
+    if (regime.present) {
+      map['regime'] = Variable<String>(regime.value);
+    }
+    if (toolCalls.present) {
+      map['tool_calls'] = Variable<int>(toolCalls.value);
+    }
     return map;
   }
 
@@ -4055,7 +4242,11 @@ class AgentRunsCompanion extends UpdateCompanion<AgentRun> {
           ..write('summary: $summary, ')
           ..write('valuePaise: $valuePaise, ')
           ..write('cashPaise: $cashPaise, ')
-          ..write('ai: $ai')
+          ..write('ai: $ai, ')
+          ..write('bull: $bull, ')
+          ..write('bear: $bear, ')
+          ..write('regime: $regime, ')
+          ..write('toolCalls: $toolCalls')
           ..write(')'))
         .toString();
   }
@@ -4353,6 +4544,293 @@ class AgentNotesCompanion extends UpdateCompanion<AgentNote> {
   }
 }
 
+class $AgentMemoriesTable extends AgentMemories
+    with TableInfo<$AgentMemoriesTable, AgentMemory> {
+  @override
+  final GeneratedDatabase attachedDatabase;
+  final String? _alias;
+  $AgentMemoriesTable(this.attachedDatabase, [this._alias]);
+  static const VerificationMeta _idMeta = const VerificationMeta('id');
+  @override
+  late final GeneratedColumn<int> id = GeneratedColumn<int>(
+    'id',
+    aliasedName,
+    false,
+    hasAutoIncrement: true,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+    defaultConstraints: GeneratedColumn.constraintIsAlways(
+      'PRIMARY KEY AUTOINCREMENT',
+    ),
+  );
+  static const VerificationMeta _agentMeta = const VerificationMeta('agent');
+  @override
+  late final GeneratedColumn<String> agent = GeneratedColumn<String>(
+    'agent',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _atMeta = const VerificationMeta('at');
+  @override
+  late final GeneratedColumn<DateTime> at = GeneratedColumn<DateTime>(
+    'at',
+    aliasedName,
+    false,
+    type: DriftSqlType.dateTime,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _bodyMeta = const VerificationMeta('body');
+  @override
+  late final GeneratedColumn<String> body = GeneratedColumn<String>(
+    'body',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  @override
+  List<GeneratedColumn> get $columns => [id, agent, at, body];
+  @override
+  String get aliasedName => _alias ?? actualTableName;
+  @override
+  String get actualTableName => $name;
+  static const String $name = 'agent_memories';
+  @override
+  VerificationContext validateIntegrity(
+    Insertable<AgentMemory> instance, {
+    bool isInserting = false,
+  }) {
+    final context = VerificationContext();
+    final data = instance.toColumns(true);
+    if (data.containsKey('id')) {
+      context.handle(_idMeta, id.isAcceptableOrUnknown(data['id']!, _idMeta));
+    }
+    if (data.containsKey('agent')) {
+      context.handle(
+        _agentMeta,
+        agent.isAcceptableOrUnknown(data['agent']!, _agentMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_agentMeta);
+    }
+    if (data.containsKey('at')) {
+      context.handle(_atMeta, at.isAcceptableOrUnknown(data['at']!, _atMeta));
+    } else if (isInserting) {
+      context.missing(_atMeta);
+    }
+    if (data.containsKey('body')) {
+      context.handle(
+        _bodyMeta,
+        body.isAcceptableOrUnknown(data['body']!, _bodyMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_bodyMeta);
+    }
+    return context;
+  }
+
+  @override
+  Set<GeneratedColumn> get $primaryKey => {id};
+  @override
+  AgentMemory map(Map<String, dynamic> data, {String? tablePrefix}) {
+    final effectivePrefix = tablePrefix != null ? '$tablePrefix.' : '';
+    return AgentMemory(
+      id: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}id'],
+      )!,
+      agent: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}agent'],
+      )!,
+      at: attachedDatabase.typeMapping.read(
+        DriftSqlType.dateTime,
+        data['${effectivePrefix}at'],
+      )!,
+      body: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}body'],
+      )!,
+    );
+  }
+
+  @override
+  $AgentMemoriesTable createAlias(String alias) {
+    return $AgentMemoriesTable(attachedDatabase, alias);
+  }
+}
+
+class AgentMemory extends DataClass implements Insertable<AgentMemory> {
+  final int id;
+  final String agent;
+  final DateTime at;
+  final String body;
+  const AgentMemory({
+    required this.id,
+    required this.agent,
+    required this.at,
+    required this.body,
+  });
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    map['id'] = Variable<int>(id);
+    map['agent'] = Variable<String>(agent);
+    map['at'] = Variable<DateTime>(at);
+    map['body'] = Variable<String>(body);
+    return map;
+  }
+
+  AgentMemoriesCompanion toCompanion(bool nullToAbsent) {
+    return AgentMemoriesCompanion(
+      id: Value(id),
+      agent: Value(agent),
+      at: Value(at),
+      body: Value(body),
+    );
+  }
+
+  factory AgentMemory.fromJson(
+    Map<String, dynamic> json, {
+    ValueSerializer? serializer,
+  }) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return AgentMemory(
+      id: serializer.fromJson<int>(json['id']),
+      agent: serializer.fromJson<String>(json['agent']),
+      at: serializer.fromJson<DateTime>(json['at']),
+      body: serializer.fromJson<String>(json['body']),
+    );
+  }
+  @override
+  Map<String, dynamic> toJson({ValueSerializer? serializer}) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return <String, dynamic>{
+      'id': serializer.toJson<int>(id),
+      'agent': serializer.toJson<String>(agent),
+      'at': serializer.toJson<DateTime>(at),
+      'body': serializer.toJson<String>(body),
+    };
+  }
+
+  AgentMemory copyWith({int? id, String? agent, DateTime? at, String? body}) =>
+      AgentMemory(
+        id: id ?? this.id,
+        agent: agent ?? this.agent,
+        at: at ?? this.at,
+        body: body ?? this.body,
+      );
+  AgentMemory copyWithCompanion(AgentMemoriesCompanion data) {
+    return AgentMemory(
+      id: data.id.present ? data.id.value : this.id,
+      agent: data.agent.present ? data.agent.value : this.agent,
+      at: data.at.present ? data.at.value : this.at,
+      body: data.body.present ? data.body.value : this.body,
+    );
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('AgentMemory(')
+          ..write('id: $id, ')
+          ..write('agent: $agent, ')
+          ..write('at: $at, ')
+          ..write('body: $body')
+          ..write(')'))
+        .toString();
+  }
+
+  @override
+  int get hashCode => Object.hash(id, agent, at, body);
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      (other is AgentMemory &&
+          other.id == this.id &&
+          other.agent == this.agent &&
+          other.at == this.at &&
+          other.body == this.body);
+}
+
+class AgentMemoriesCompanion extends UpdateCompanion<AgentMemory> {
+  final Value<int> id;
+  final Value<String> agent;
+  final Value<DateTime> at;
+  final Value<String> body;
+  const AgentMemoriesCompanion({
+    this.id = const Value.absent(),
+    this.agent = const Value.absent(),
+    this.at = const Value.absent(),
+    this.body = const Value.absent(),
+  });
+  AgentMemoriesCompanion.insert({
+    this.id = const Value.absent(),
+    required String agent,
+    required DateTime at,
+    required String body,
+  }) : agent = Value(agent),
+       at = Value(at),
+       body = Value(body);
+  static Insertable<AgentMemory> custom({
+    Expression<int>? id,
+    Expression<String>? agent,
+    Expression<DateTime>? at,
+    Expression<String>? body,
+  }) {
+    return RawValuesInsertable({
+      if (id != null) 'id': id,
+      if (agent != null) 'agent': agent,
+      if (at != null) 'at': at,
+      if (body != null) 'body': body,
+    });
+  }
+
+  AgentMemoriesCompanion copyWith({
+    Value<int>? id,
+    Value<String>? agent,
+    Value<DateTime>? at,
+    Value<String>? body,
+  }) {
+    return AgentMemoriesCompanion(
+      id: id ?? this.id,
+      agent: agent ?? this.agent,
+      at: at ?? this.at,
+      body: body ?? this.body,
+    );
+  }
+
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    if (id.present) {
+      map['id'] = Variable<int>(id.value);
+    }
+    if (agent.present) {
+      map['agent'] = Variable<String>(agent.value);
+    }
+    if (at.present) {
+      map['at'] = Variable<DateTime>(at.value);
+    }
+    if (body.present) {
+      map['body'] = Variable<String>(body.value);
+    }
+    return map;
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('AgentMemoriesCompanion(')
+          ..write('id: $id, ')
+          ..write('agent: $agent, ')
+          ..write('at: $at, ')
+          ..write('body: $body')
+          ..write(')'))
+        .toString();
+  }
+}
+
 abstract class _$MarketDb extends GeneratedDatabase {
   _$MarketDb(QueryExecutor e) : super(e);
   $MarketDbManager get managers => $MarketDbManager(this);
@@ -4367,6 +4845,7 @@ abstract class _$MarketDb extends GeneratedDatabase {
   late final $AgentTradesTable agentTrades = $AgentTradesTable(this);
   late final $AgentRunsTable agentRuns = $AgentRunsTable(this);
   late final $AgentNotesTable agentNotes = $AgentNotesTable(this);
+  late final $AgentMemoriesTable agentMemories = $AgentMemoriesTable(this);
   @override
   Iterable<TableInfo<Table, Object?>> get allTables =>
       allSchemaEntities.whereType<TableInfo<Table, Object?>>();
@@ -4383,6 +4862,7 @@ abstract class _$MarketDb extends GeneratedDatabase {
     agentTrades,
     agentRuns,
     agentNotes,
+    agentMemories,
   ];
   @override
   DriftDatabaseOptions get options =>
@@ -6344,6 +6824,10 @@ typedef $$AgentRunsTableCreateCompanionBuilder = AgentRunsCompanion Function({
   required int valuePaise,
   required int cashPaise,
   Value<bool> ai,
+  Value<String?> bull,
+  Value<String?> bear,
+  Value<String?> regime,
+  Value<int> toolCalls,
 });
 typedef $$AgentRunsTableUpdateCompanionBuilder = AgentRunsCompanion Function({
   Value<int> id,
@@ -6354,6 +6838,10 @@ typedef $$AgentRunsTableUpdateCompanionBuilder = AgentRunsCompanion Function({
   Value<int> valuePaise,
   Value<int> cashPaise,
   Value<bool> ai,
+  Value<String?> bull,
+  Value<String?> bear,
+  Value<String?> regime,
+  Value<int> toolCalls,
 });
 
 class $$AgentRunsTableFilterComposer
@@ -6402,6 +6890,26 @@ class $$AgentRunsTableFilterComposer
 
   ColumnFilters<bool> get ai => $composableBuilder(
     column: $table.ai,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get bull => $composableBuilder(
+    column: $table.bull,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get bear => $composableBuilder(
+    column: $table.bear,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get regime => $composableBuilder(
+    column: $table.regime,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get toolCalls => $composableBuilder(
+    column: $table.toolCalls,
     builder: (column) => ColumnFilters(column),
   );
 }
@@ -6454,6 +6962,26 @@ class $$AgentRunsTableOrderingComposer
     column: $table.ai,
     builder: (column) => ColumnOrderings(column),
   );
+
+  ColumnOrderings<String> get bull => $composableBuilder(
+    column: $table.bull,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get bear => $composableBuilder(
+    column: $table.bear,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get regime => $composableBuilder(
+    column: $table.regime,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<int> get toolCalls => $composableBuilder(
+    column: $table.toolCalls,
+    builder: (column) => ColumnOrderings(column),
+  );
 }
 
 class $$AgentRunsTableAnnotationComposer
@@ -6490,6 +7018,18 @@ class $$AgentRunsTableAnnotationComposer
 
   GeneratedColumn<bool> get ai =>
       $composableBuilder(column: $table.ai, builder: (column) => column);
+
+  GeneratedColumn<String> get bull =>
+      $composableBuilder(column: $table.bull, builder: (column) => column);
+
+  GeneratedColumn<String> get bear =>
+      $composableBuilder(column: $table.bear, builder: (column) => column);
+
+  GeneratedColumn<String> get regime =>
+      $composableBuilder(column: $table.regime, builder: (column) => column);
+
+  GeneratedColumn<int> get toolCalls =>
+      $composableBuilder(column: $table.toolCalls, builder: (column) => column);
 }
 
 class $$AgentRunsTableTableManager
@@ -6528,6 +7068,10 @@ class $$AgentRunsTableTableManager
                 Value<int> valuePaise = const Value.absent(),
                 Value<int> cashPaise = const Value.absent(),
                 Value<bool> ai = const Value.absent(),
+                Value<String?> bull = const Value.absent(),
+                Value<String?> bear = const Value.absent(),
+                Value<String?> regime = const Value.absent(),
+                Value<int> toolCalls = const Value.absent(),
               }) => AgentRunsCompanion(
                 id: id,
                 agent: agent,
@@ -6537,6 +7081,10 @@ class $$AgentRunsTableTableManager
                 valuePaise: valuePaise,
                 cashPaise: cashPaise,
                 ai: ai,
+                bull: bull,
+                bear: bear,
+                regime: regime,
+                toolCalls: toolCalls,
               ),
           createCompanionCallback:
               ({
@@ -6548,6 +7096,10 @@ class $$AgentRunsTableTableManager
                 required int valuePaise,
                 required int cashPaise,
                 Value<bool> ai = const Value.absent(),
+                Value<String?> bull = const Value.absent(),
+                Value<String?> bear = const Value.absent(),
+                Value<String?> regime = const Value.absent(),
+                Value<int> toolCalls = const Value.absent(),
               }) => AgentRunsCompanion.insert(
                 id: id,
                 agent: agent,
@@ -6557,6 +7109,10 @@ class $$AgentRunsTableTableManager
                 valuePaise: valuePaise,
                 cashPaise: cashPaise,
                 ai: ai,
+                bull: bull,
+                bear: bear,
+                regime: regime,
+                toolCalls: toolCalls,
               ),
           withReferenceMapper: (p0) => p0
               .map(
@@ -6759,6 +7315,190 @@ typedef $$AgentNotesTableProcessedTableManager =
       AgentNote,
       PrefetchHooks Function()
     >;
+typedef $$AgentMemoriesTableCreateCompanionBuilder =
+    AgentMemoriesCompanion Function({
+      Value<int> id,
+      required String agent,
+      required DateTime at,
+      required String body,
+    });
+typedef $$AgentMemoriesTableUpdateCompanionBuilder =
+    AgentMemoriesCompanion Function({
+      Value<int> id,
+      Value<String> agent,
+      Value<DateTime> at,
+      Value<String> body,
+    });
+
+class $$AgentMemoriesTableFilterComposer
+    extends Composer<_$MarketDb, $AgentMemoriesTable> {
+  $$AgentMemoriesTableFilterComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnFilters<int> get id => $composableBuilder(
+    column: $table.id,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get agent => $composableBuilder(
+    column: $table.agent,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<DateTime> get at => $composableBuilder(
+    column: $table.at,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get body => $composableBuilder(
+    column: $table.body,
+    builder: (column) => ColumnFilters(column),
+  );
+}
+
+class $$AgentMemoriesTableOrderingComposer
+    extends Composer<_$MarketDb, $AgentMemoriesTable> {
+  $$AgentMemoriesTableOrderingComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnOrderings<int> get id => $composableBuilder(
+    column: $table.id,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get agent => $composableBuilder(
+    column: $table.agent,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<DateTime> get at => $composableBuilder(
+    column: $table.at,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get body => $composableBuilder(
+    column: $table.body,
+    builder: (column) => ColumnOrderings(column),
+  );
+}
+
+class $$AgentMemoriesTableAnnotationComposer
+    extends Composer<_$MarketDb, $AgentMemoriesTable> {
+  $$AgentMemoriesTableAnnotationComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  GeneratedColumn<int> get id =>
+      $composableBuilder(column: $table.id, builder: (column) => column);
+
+  GeneratedColumn<String> get agent =>
+      $composableBuilder(column: $table.agent, builder: (column) => column);
+
+  GeneratedColumn<DateTime> get at =>
+      $composableBuilder(column: $table.at, builder: (column) => column);
+
+  GeneratedColumn<String> get body =>
+      $composableBuilder(column: $table.body, builder: (column) => column);
+}
+
+class $$AgentMemoriesTableTableManager
+    extends
+        RootTableManager<
+          _$MarketDb,
+          $AgentMemoriesTable,
+          AgentMemory,
+          $$AgentMemoriesTableFilterComposer,
+          $$AgentMemoriesTableOrderingComposer,
+          $$AgentMemoriesTableAnnotationComposer,
+          $$AgentMemoriesTableCreateCompanionBuilder,
+          $$AgentMemoriesTableUpdateCompanionBuilder,
+          (
+            AgentMemory,
+            BaseReferences<_$MarketDb, $AgentMemoriesTable, AgentMemory>,
+          ),
+          AgentMemory,
+          PrefetchHooks Function()
+        > {
+  $$AgentMemoriesTableTableManager(_$MarketDb db, $AgentMemoriesTable table)
+    : super(
+        TableManagerState(
+          db: db,
+          table: table,
+          createFilteringComposer: () =>
+              $$AgentMemoriesTableFilterComposer($db: db, $table: table),
+          createOrderingComposer: () =>
+              $$AgentMemoriesTableOrderingComposer($db: db, $table: table),
+          createComputedFieldComposer: () =>
+              $$AgentMemoriesTableAnnotationComposer($db: db, $table: table),
+          updateCompanionCallback:
+              ({
+                Value<int> id = const Value.absent(),
+                Value<String> agent = const Value.absent(),
+                Value<DateTime> at = const Value.absent(),
+                Value<String> body = const Value.absent(),
+              }) => AgentMemoriesCompanion(
+                id: id,
+                agent: agent,
+                at: at,
+                body: body,
+              ),
+          createCompanionCallback:
+              ({
+                Value<int> id = const Value.absent(),
+                required String agent,
+                required DateTime at,
+                required String body,
+              }) => AgentMemoriesCompanion.insert(
+                id: id,
+                agent: agent,
+                at: at,
+                body: body,
+              ),
+          withReferenceMapper: (p0) => p0
+              .map(
+                (e) => (
+                  e.readTable<$AgentMemoriesTable, AgentMemory>(table),
+                  BaseReferences<_$MarketDb, $AgentMemoriesTable, AgentMemory>(
+                    db,
+                    table,
+                    e,
+                  ),
+                ),
+              )
+              .toList(),
+          prefetchHooksCallback: null,
+        ),
+      );
+}
+
+typedef $$AgentMemoriesTableProcessedTableManager =
+    ProcessedTableManager<
+      _$MarketDb,
+      $AgentMemoriesTable,
+      AgentMemory,
+      $$AgentMemoriesTableFilterComposer,
+      $$AgentMemoriesTableOrderingComposer,
+      $$AgentMemoriesTableAnnotationComposer,
+      $$AgentMemoriesTableCreateCompanionBuilder,
+      $$AgentMemoriesTableUpdateCompanionBuilder,
+      (
+        AgentMemory,
+        BaseReferences<_$MarketDb, $AgentMemoriesTable, AgentMemory>,
+      ),
+      AgentMemory,
+      PrefetchHooks Function()
+    >;
 
 class $MarketDbManager {
   final _$MarketDb _db;
@@ -6785,6 +7525,8 @@ class $MarketDbManager {
       $$AgentRunsTableTableManager(_db, _db.agentRuns);
   $$AgentNotesTableTableManager get agentNotes =>
       $$AgentNotesTableTableManager(_db, _db.agentNotes);
+  $$AgentMemoriesTableTableManager get agentMemories =>
+      $$AgentMemoriesTableTableManager(_db, _db.agentMemories);
 }
 
 class $GoalsTable extends Goals with TableInfo<$GoalsTable, Goal> {
