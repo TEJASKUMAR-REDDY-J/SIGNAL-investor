@@ -131,8 +131,3 @@ extension AppColors on ColorScheme {
       ? const [Color(0xFF34D399), Color(0xFF60A5FA), Color(0xFFFBBF24), Color(0xFFF472B6), Color(0xFFA78BFA), Color(0xFF94A3B8)]
       : const [Color(0xFF059669), Color(0xFF2563EB), Color(0xFFD97706), Color(0xFFDB2777), Color(0xFF7C3AED), Color(0xFF64748B)];
 }
-
-Color avatarColor(String seed) {
-  const c = [Color(0xFF14A37F), Color(0xFF3B82F6), Color(0xFFF59E0B), Color(0xFFEC4899), Color(0xFF8B5CF6), Color(0xFF06B6D4)];
-  return c[seed.codeUnits.fold(0, (a, b) => a + b) % c.length];
-}

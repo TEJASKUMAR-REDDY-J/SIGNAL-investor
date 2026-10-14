@@ -314,28 +314,20 @@ void main() {
     await close(t);
   });
 
-  testWidgets('first run shows disclaimer, then profile creation', (t) async {
+  testWidgets('first run: disclaimer, then fingerprint lock; one profile per phone', (t) async {
     tall(t);
     await t.pumpWidget(const App());
     await settle(t);
     expect(find.textContaining('Not investment, tax or legal advice'), findsOneWidget);
     await t.tap(find.text('I understand'));
     await settle(t);
-    expect(find.text('No profiles yet'), findsOneWidget);
-    await t.tap(find.text('Add profile'));
-    await settle(t);
-    await t.tap(find.text('Add profile'));
-    await settle(t);
-    expect(find.text('Profile 1'), findsOneWidget);
-    expect(find.text('Profile 2'), findsOneWidget);
-    expect(find.byType(TextField), findsNothing); // never asks for a name
-    final ps = await q(t, loadProfiles);
-    expect(ps.map((p) => p.name), ['Profile 1', 'Profile 2']);
-    expect(ps.last.badge, '2');
-    for (final p in ps) {
-      expect(await q(t, () => storage.read(key: 'key_${p.id}')), matches(RegExp(r'^[0-9a-f]{64}$')));
-    }
-    expect(ps.first.id, isNot(ps.last.id));
+    expect(find.text('Unlock'), findsOneWidget);
+    expect(find.byType(TextField), findsNothing); // never asks for a name or a profile
+    final a = await q(t, deviceProfile);
+    final b = await q(t, deviceProfile);
+    expect(b.id, a.id);
+    expect(await q(t, loadProfiles), hasLength(1));
+    expect(await q(t, () => storage.read(key: 'key_${a.id}')), matches(RegExp(r'^[0-9a-f]{64}$')));
     await close(t);
   });
 }

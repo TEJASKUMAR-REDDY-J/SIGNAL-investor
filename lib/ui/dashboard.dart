@@ -15,6 +15,7 @@ import '../engine/sell_rules.dart';
 import '../engine/valuation.dart';
 import '../sources/mfapi.dart';
 import 'holding.dart';
+import 'logo.dart';
 import 'news.dart';
 import 'patience.dart';
 import 'sell_flow.dart';
@@ -243,15 +244,11 @@ class _DashboardState extends State<Dashboard> {
                   floating: true,
                   titleSpacing: 16,
                   title: Row(children: [
-                    CircleAvatar(
-                      radius: 16,
-                      backgroundColor: avatarColor(s.profile.id),
-                      child: Text(s.profile.badge, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w700, fontSize: 14)),
-                    ),
+                    const SizedBox(width: 32, height: 32, child: SignalLogo()),
                     const SizedBox(width: 10),
                     Expanded(
                       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                        Text(s.profile.name, overflow: TextOverflow.ellipsis),
+                        const Text('SIGNAL', style: TextStyle(fontWeight: FontWeight.w800, letterSpacing: 1.2)),
                         Row(children: [
                           Icon(Icons.circle,
                               size: 8,

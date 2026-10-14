@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:local_auth/local_auth.dart';
 
@@ -6,6 +7,7 @@ import 'db/open_db.dart';
 import 'engine/portfolio.dart';
 import 'ui/settings.dart';
 import 'ui/shell.dart';
+import 'ui/logo.dart';
 import 'ui/theme.dart';
 import 'ui/widgets.dart';
 
@@ -23,6 +25,7 @@ class App extends StatefulWidget {
 
 class _AppState extends State<App> with WidgetsBindingObserver {
   final _nav = GlobalKey<NavigatorState>();
+  final _prompt = ValueNotifier(0); // bumped to ask the lock screen for the fingerprint again
   MarketDb? _market;
   ProfileDb? _profile;
   DateTime? _pausedAt;
@@ -40,11 +43,13 @@ class _AppState extends State<App> with WidgetsBindingObserver {
     } else if (s == AppLifecycleState.resumed) {
       final away = _pausedAt == null ? Duration.zero : DateTime.now().difference(_pausedAt!);
       _pausedAt = null;
-      if (_profile != null && away >= const Duration(seconds: 60)) lock();
+      if (_profile != null && away >= const Duration(seconds: 60)) {
+        lock().then((_) => _prompt.value++);
+      }
     }
   }
 
-  /// Closes the profile db and returns to the picker.
+  /// Closes the profile db and returns to the lock screen.
   Future<void> lock() async {
     final p = _profile;
     _profile = null;
@@ -52,14 +57,17 @@ class _AppState extends State<App> with WidgetsBindingObserver {
     await p?.close();
   }
 
-  Future<String?> unlock(Profile p) async {
+  /// One encrypted profile per phone, opened with the phone's own fingerprint, face or screen lock.
+  Future<String?> unlock() async {
+    if (_profile != null) return null;
     final auth = LocalAuthentication();
     try {
       if (!await auth.isDeviceSupported()) {
         return 'Set a screen lock (PIN, pattern or fingerprint) on this phone first.';
       }
-      final ok = await auth.authenticate(localizedReason: 'Unlock ${p.name}');
+      final ok = await auth.authenticate(localizedReason: 'Unlock SIGNAL Investor');
       if (!ok) return 'Not unlocked.';
+      final p = await deviceProfile();
       _market ??= await openMarket();
       _profile = await openProfile(p);
       final session = Session(p, _profile!, _market!, ValueNotifier<Portfolio?>(null), lock);
@@ -69,7 +77,7 @@ class _AppState extends State<App> with WidgetsBindingObserver {
       return 'Unlock failed: ${e.code.name}';
     } catch (e) {
       // Never surface key material; StateError messages are our own.
-      return e is StateError ? e.message : 'Could not open profile.';
+      return e is StateError ? e.message : 'Could not open your data.';
     }
   }
 
@@ -83,45 +91,49 @@ class _AppState extends State<App> with WidgetsBindingObserver {
           theme: buildTheme(Brightness.light),
           darkTheme: buildTheme(Brightness.dark),
           themeMode: mode,
-          home: ProfilePicker(onUnlock: unlock),
+          home: LockScreen(onUnlock: unlock, prompt: _prompt),
         ),
       );
 }
 
-class ProfilePicker extends StatefulWidget {
-  final Future<String?> Function(Profile) onUnlock;
-  const ProfilePicker({super.key, required this.onUnlock});
+class LockScreen extends StatefulWidget {
+  final Future<String?> Function() onUnlock;
+  final ValueListenable<int>? prompt;
+  const LockScreen({super.key, required this.onUnlock, this.prompt});
   @override
-  State<ProfilePicker> createState() => _ProfilePickerState();
+  State<LockScreen> createState() => _LockScreenState();
 }
 
-class _ProfilePickerState extends State<ProfilePicker> {
-  List<Profile>? _profiles;
+class _LockScreenState extends State<LockScreen> {
   bool? _accepted;
-  String? _busy;
+  bool _busy = false;
 
   @override
   void initState() {
     super.initState();
+    widget.prompt?.addListener(_open);
     _load();
   }
 
+  @override
+  void dispose() {
+    widget.prompt?.removeListener(_open);
+    super.dispose();
+  }
+
   Future<void> _load() async {
-    final ps = await loadProfiles();
     final ok = await storage.read(key: 'disclaimer_ok') == '1';
-    if (mounted) setState(() => (_profiles = ps, _accepted = ok));
-  }
-
-  Future<void> _create() async {
-    await createProfile();
-    await _load();
-  }
-
-  Future<void> _open(Profile p) async {
-    setState(() => _busy = p.id);
-    final err = await widget.onUnlock(p);
     if (!mounted) return;
-    setState(() => _busy = null);
+    setState(() => _accepted = ok);
+    if (ok) _open(); // ask for the fingerprint straight away on launch
+  }
+
+  Future<void> _open() async {
+    if (_busy || !mounted) return;
+    setState(() => _busy = true);
+    final err = await widget.onUnlock();
+    if (!mounted) return;
+    setState(() => _busy = false);
     if (err != null) snack(context, err);
   }
 
@@ -129,7 +141,7 @@ class _ProfilePickerState extends State<ProfilePicker> {
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
     final t = Theme.of(context).textTheme;
-    if (_profiles == null) return const Scaffold(body: Center(child: CircularProgressIndicator()));
+    if (_accepted == null) return const Scaffold(body: SizedBox());
     if (_accepted != true) {
       return Scaffold(
         body: SafeArea(
@@ -144,6 +156,7 @@ class _ProfilePickerState extends State<ProfilePicker> {
               onPressed: () async {
                 await storage.write(key: 'disclaimer_ok', value: '1');
                 setState(() => _accepted = true);
+                _open();
               },
               child: const Text('I understand'),
             ),
@@ -153,56 +166,31 @@ class _ProfilePickerState extends State<ProfilePicker> {
     }
     return Scaffold(
       body: SafeArea(
-        child: ListView(padding: const EdgeInsets.fromLTRB(20, 40, 20, 100), children: [
-          Row(children: [
-            Container(
-              padding: const EdgeInsets.all(10),
-              decoration: BoxDecoration(color: cs.primaryContainer, borderRadius: BorderRadius.circular(14)),
-              child: Icon(Icons.insights, color: cs.onPrimaryContainer),
-            ),
-            const SizedBox(width: 12),
-            Text('SIGNAL', style: t.titleLarge?.copyWith(fontWeight: FontWeight.w800, letterSpacing: 1.5)),
-          ]),
-          const SizedBox(height: 28),
-          Text('Track. Rule. Alert.', style: t.headlineMedium?.copyWith(fontWeight: FontWeight.w700)),
-          Text("Don't predict.", style: t.headlineMedium?.copyWith(color: cs.primary, fontWeight: FontWeight.w700)),
-          const SizedBox(height: 32),
-          Text('Who is investing?', style: t.titleMedium?.copyWith(color: cs.onSurfaceVariant)),
-          const SizedBox(height: 12),
-          for (final p in _profiles!)
-            Padding(
-              padding: const EdgeInsets.only(bottom: 10),
-              child: Card(
-                child: ListTile(
-                  contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                  leading: CircleAvatar(
-                    radius: 22,
-                    backgroundColor: avatarColor(p.id),
-                    child: Text(p.badge,
-                        style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w700, fontSize: 18)),
-                  ),
-                  title: Text(p.name, style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 17)),
-                  subtitle: const Text('Encrypted profile'),
-                  trailing: _busy == p.id
-                      ? const SizedBox(width: 24, height: 24, child: CircularProgressIndicator(strokeWidth: 2.5))
-                      : Icon(Icons.fingerprint, color: cs.primary, size: 28),
-                  onTap: _busy == null ? () => _open(p) : null,
-                ),
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(24, 0, 24, 32),
+          child: Column(children: [
+            const Spacer(flex: 3),
+            const SizedBox(width: 88, height: 88, child: SignalLogo()),
+            const SizedBox(height: 20),
+            Text('SIGNAL Investor', style: t.headlineSmall?.copyWith(fontWeight: FontWeight.w800)),
+            const SizedBox(height: 6),
+            Text("Track. Rule. Alert. Don't predict.", style: t.bodyLarge?.copyWith(color: cs.onSurfaceVariant)),
+            const Spacer(flex: 4),
+            SizedBox(
+              width: double.infinity,
+              child: FilledButton.icon(
+                onPressed: _busy ? null : _open,
+                icon: _busy
+                    ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2.5))
+                    : const Icon(Icons.fingerprint),
+                label: const Text('Unlock'),
               ),
             ),
-          if (_profiles!.isEmpty)
-            const EmptyState(
-              icon: Icons.group_outlined,
-              title: 'No profiles yet',
-              message: 'Each person gets their own encrypted profile, unlocked with this phone\'s fingerprint or PIN.',
-            ),
-          const SizedBox(height: 8),
-          OutlinedButton.icon(
-            onPressed: _busy == null ? _create : null,
-            icon: const Icon(Icons.person_add_alt),
-            label: const Text('Add profile'),
-          ),
-        ]),
+            const SizedBox(height: 12),
+            Text("Uses this phone's fingerprint, face or screen lock. Your data is encrypted and stays on this phone.",
+                textAlign: TextAlign.center, style: t.bodySmall?.copyWith(color: cs.onSurfaceVariant)),
+          ]),
+        ),
       ),
     );
   }

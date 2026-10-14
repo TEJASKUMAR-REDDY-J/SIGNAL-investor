@@ -96,6 +96,9 @@ Future<List<Profile>> loadProfiles() async {
   ];
 }
 
+/// One profile per phone: the existing one, or a new one on first unlock.
+Future<Profile> deviceProfile() async => (await loadProfiles()).firstOrNull ?? await createProfile();
+
 /// Profiles carry no personal names: they are labelled "Profile N".
 Future<Profile> createProfile() async {
   final list = await loadProfiles();

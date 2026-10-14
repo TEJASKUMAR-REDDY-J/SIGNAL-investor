@@ -163,13 +163,8 @@ void main() {
     await settle(t, 60);
     await seeded;
 
-    await t.runAsync(() async {
-      for (var i = 0; i < 3; i++) {
-        await createProfile();
-      }
-    });
-    await t.pumpWidget(app(ProfilePicker(onUnlock: (_) async => null), b));
-    await shot(t, '01_profiles_$tag');
+    await t.pumpWidget(app(LockScreen(onUnlock: () async => null), b));
+    await shot(t, '01_lock_$tag');
 
     await t.pumpWidget(app(Shell(session: session), b));
     await shot(t, '02_home_$tag', n: 60);

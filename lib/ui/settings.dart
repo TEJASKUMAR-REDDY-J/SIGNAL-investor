@@ -131,17 +131,12 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   subtitle: const Text('Also locks after 60 s in the background'),
                   onTap: widget.session.lock,
                 ),
-                ListTile(
-                  leading: const Icon(Icons.switch_account_outlined),
-                  title: const Text('Switch profile'),
-                  onTap: widget.session.lock,
-                ),
                 const ListTile(
                   leading: Icon(Icons.enhanced_encryption_outlined),
                   title: Text('Encrypted on this phone'),
                   subtitle: Text(
-                    'Each profile has its own key in the Android keystore. Screenshots are blocked. '
-                    'No cloud backup.',
+                    'Your data key lives in the Android keystore. Screenshots are blocked. '
+                    'No cloud backup: uninstalling the app deletes your data.',
                   ),
                 ),
               ],
@@ -214,7 +209,7 @@ class _GroqCardState extends State<_GroqCard> {
         _hasOwn = cleanKey(own) != null;
         _tag = tag ?? defaultTagModel;
         _ask = askM ?? defaultAskModel;
-        _status = _hasOwn ? 'Using this profile\'s key' : (envKey() != null ? 'Using the key built in from .env' : 'No key yet');
+        _status = _hasOwn ? 'Using your saved key' : (envKey() != null ? 'Using the key built in from .env' : 'No key yet');
       });
     }();
   }
@@ -278,7 +273,7 @@ class _GroqCardState extends State<_GroqCard> {
             enableSuggestions: false,
             autocorrect: false,
             decoration: InputDecoration(
-              labelText: _hasOwn ? 'Replace this profile\'s key' : 'Paste a Groq API key for this profile',
+              labelText: _hasOwn ? 'Replace your saved key' : 'Paste a Groq API key',
               suffixIcon: IconButton(tooltip: 'Check key', icon: const Icon(Icons.check), onPressed: () => _check(_key.text)),
             ),
             onSubmitted: _check,
