@@ -81,7 +81,7 @@ void showHelp(BuildContext context, Session s) => showModalBottomSheet(
             FilledButton.tonalIcon(
               onPressed: () {
                 Navigator.pop(ctx);
-                Navigator.push(context, MaterialPageRoute(builder: (_) => TourScreen(session: s)));
+                openTour(context, s);
               },
               icon: const Icon(Icons.play_circle_outline),
               label: const Text('Replay the tour'),
@@ -108,6 +108,12 @@ void showHelp(BuildContext context, Session s) => showModalBottomSheet(
     );
 
 // ---------------- Tour ----------------
+
+/// Shows the tour; builds the demo portfolio if the user picks it.
+Future<void> openTour(BuildContext context, Session s) async {
+  final demo = await Navigator.push<bool>(context, MaterialPageRoute(builder: (_) => TourScreen(session: s)));
+  if (demo == true && context.mounted) await startDemo(context, s);
+}
 
 class TourScreen extends StatefulWidget {
   final Session session;
@@ -153,11 +159,10 @@ class _TourScreenState extends State<TourScreen> {
     super.dispose();
   }
 
+  /// Pops with true when the demo was chosen; [openTour] runs it.
   Future<void> _finish({bool demo = false}) async {
     await storage.write(key: tourDoneKey, value: '1');
-    if (!mounted) return;
-    Navigator.pop(context);
-    if (demo) await startDemo(context, widget.session);
+    if (mounted) Navigator.pop(context, demo);
   }
 
   @override
@@ -252,6 +257,9 @@ const _demo = [
 /// Builds a demo portfolio from real past prices, so every screen has something to show.
 Future<void> startDemo(BuildContext context, Session s) async {
   final status = ValueNotifier('Fetching real past prices…');
+  // Captured now: the caller's context may be gone by the time the work ends.
+  final nav = Navigator.of(context, rootNavigator: true);
+  final messenger = ScaffoldMessenger.of(context);
   showDialog<void>(
     context: context,
     barrierDismissible: false,
@@ -303,11 +311,12 @@ Future<void> startDemo(BuildContext context, Session s) async {
   } catch (_) {
     // Partial demo is fine; the banner offers to clear it.
   } finally {
-    if (context.mounted) Navigator.of(context, rootNavigator: true).pop();
+    nav.pop();
   }
-  if (context.mounted) {
-    snack(context, added == 0 ? 'Could not reach the price sources. Check the connection and try again.' : 'Demo portfolio ready: $added entries at real past prices.');
-  }
+  messenger.showSnackBar(SnackBar(
+      content: Text(added == 0
+          ? 'Could not reach the price sources. Check the connection and try again.'
+          : 'Demo portfolio ready: $added entries at real past prices.')));
 }
 
 Future<void> clearDemo(BuildContext context, Session s) async {

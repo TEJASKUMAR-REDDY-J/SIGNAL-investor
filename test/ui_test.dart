@@ -355,6 +355,27 @@ void main() {
     await close(t);
   });
 
+  testWidgets('first-run tour: demo choice runs after the tour closes and its progress dialog always closes', (t) async {
+    tall(t);
+    FlutterSecureStorage.setMockInitialValues({'notif_asked': '1'}); // tour not done yet
+    await t.pumpWidget(app());
+    await settle(t, 40);
+    expect(find.text('Track what you own'), findsOneWidget);
+    for (var i = 0; i < 3; i++) {
+      await t.tap(find.text('Next'));
+      await settle(t, 10);
+    }
+    await t.tap(find.text('Explore with a demo portfolio'));
+    for (var i = 0; i < 400 && find.textContaining('Could not reach').evaluate().isEmpty; i++) {
+      await t.pump(const Duration(milliseconds: 50)); // offline in tests: the demo gives up
+    }
+    expect(find.byType(AlertDialog), findsNothing);
+    expect(find.textContaining('Could not reach the price sources'), findsWidgets);
+    expect(await q(t, () => storage.read(key: 'tour_done')), '1');
+    expect(find.text('Start here'), findsOneWidget);
+    await close(t);
+  });
+
   testWidgets('settings theme toggle persists', (t) async {
     tall(t);
     await t.pumpWidget(app(SettingsScreen(session: session)));

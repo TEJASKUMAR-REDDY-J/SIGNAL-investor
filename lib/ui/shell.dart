@@ -178,7 +178,7 @@ class _ShellState extends State<Shell> with WidgetsBindingObserver {
     _live();
     // First launch only: the tour (with the demo option) before anything else.
     if (await storage.read(key: tourDoneKey) == null && mounted) {
-      await Navigator.push(context, MaterialPageRoute(builder: (_) => TourScreen(session: s)));
+      await openTour(context, s);
       await storage.write(key: tourDoneKey, value: '1');
     }
     try {

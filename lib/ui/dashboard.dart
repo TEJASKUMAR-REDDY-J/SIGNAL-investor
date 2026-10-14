@@ -1403,7 +1403,7 @@ class _GettingStarted extends StatelessWidget {
                   ),
                 Wrap(spacing: 8, children: [
                   TextButton.icon(
-                    onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (_) => TourScreen(session: session))),
+                    onPressed: () => openTour(context, session),
                     icon: const Icon(Icons.play_circle_outline),
                     label: const Text('1-minute tour'),
                   ),
