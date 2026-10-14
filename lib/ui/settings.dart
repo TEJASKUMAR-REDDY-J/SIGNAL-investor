@@ -377,7 +377,7 @@ class _NewsCardState extends State<_NewsCard> {
                 ? const SizedBox(width: 24, height: 24, child: CircularProgressIndicator(strokeWidth: 2.5))
                 : const Icon(Icons.newspaper_outlined),
             title: const Text('Check the news now'),
-            subtitle: Text(_last ?? 'Runs the same job now (about a minute)'),
+            subtitle: Text(_busy ? 'Checking prices, NSE filings and news…' : (_last ?? 'Runs the same job now')),
             onTap: _busy ? null : _runNow,
           ),
         ]),

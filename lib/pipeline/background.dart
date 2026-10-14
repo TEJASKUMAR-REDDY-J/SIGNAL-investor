@@ -101,9 +101,11 @@ Future<String?> runDaily({DateTime? nowUtc, MarketDb? market, Net? net, bool man
     Future<(String, String)?> groq() async => key == null ? null : (key, defaultTagModel);
     Set<int> held() => tracked;
     await Refresher(m, n, extra: [filingsStep(m, n, held), newsStep(m, n, held, groq)]).run(tracked, force: true, nowUtc: now);
-    try {
-      await runScan(m, n, onProgress: (_, _, _) {}, cancel: CancelToken(), limit: 40, nowUtc: now);
-    } catch (_) {}
+    if (!manual) {
+      try {
+        await runScan(m, n, onProgress: (_, _, _) {}, cancel: CancelToken(), limit: 40, nowUtc: now);
+      } catch (_) {}
+    }
 
     final since = manual
         ? now.subtract(const Duration(hours: 24))

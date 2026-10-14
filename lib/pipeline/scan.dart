@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'dart:isolate';
 
 import 'package:drift/drift.dart';
 
@@ -70,17 +71,18 @@ Future<void> _refreshOne(MarketDb m, Net net, YahooSession yahoo, Listing u, Map
       FundamentalsCompanion.insert(symbol: u.symbol, json: jsonEncode(data), fetchedAt: now));
 }
 
-/// Stock ideas from the cache alone: instant, no network.
+/// Stock ideas from the cache alone: no network. Decoding ~500 cached entries
+/// (with 3 years of prices each) runs on a background isolate to keep the UI smooth.
 Future<List<Candidate>> stockIdeas(MarketDb m, {Set<String> exclude = const {}, DateTime? nowUtc}) async {
   final now = (nowUtc ?? DateTime.now()).toUtc();
   final members = {for (final u in await (m.select(m.universe)..where((u) => u.nifty500.equals(true))).get()) u.symbol: u};
-  final inputs = <ScanInput>[];
-  for (final f in await (m.select(m.fundamentals)..where((f) => f.symbol.like('$fundKeyPrefix%').not())).get()) {
-    final u = members[f.symbol];
-    if (u == null) continue;
-    inputs.add(_input(u, (jsonDecode(f.json) as Map).cast<String, dynamic>(), now));
-  }
-  return rankUniverse(inputs, exclude: exclude);
+  final rows = [
+    for (final f in await (m.select(m.fundamentals)..where((f) => f.symbol.like('$fundKeyPrefix%').not())).get())
+      if (members[f.symbol] != null) (members[f.symbol]!, f.json),
+  ];
+  return Isolate.run(() => rankUniverse([
+        for (final (u, json) in rows) _input(u, (jsonDecode(json) as Map).cast<String, dynamic>(), now),
+      ], exclude: exclude));
 }
 
 /// Full NIFTY 500 refresh: two requests in flight with a pause each, cached

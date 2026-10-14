@@ -23,7 +23,7 @@ Step filingsStep(MarketDb m, Net net, HeldIds held) => (now) async {
       if (inst.isEmpty) return null;
       final s = NseSession(net);
       var added = 0, failed = 0;
-      for (final i in inst) {
+      Future<void> one(Instrument i) async {
         try {
           final list = await s.announcements(i.nseSymbol!, now.subtract(const Duration(days: 7)), now);
           for (final a in list) {
@@ -40,6 +40,11 @@ Step filingsStep(MarketDb m, Net net, HeldIds held) => (now) async {
           failed++;
         }
       }
+
+      // First call warms NSE's cookie; if NSE refuses it, skip the rest instead of timing out on each.
+      await one(inst.first);
+      if (failed == 0) await Future.wait(inst.skip(1).map(one)); // Net keeps at most 4 in flight
+      if (failed > 0 && added == 0 && inst.length > 1) failed = inst.length;
       await m.logFetch('filings', rows: added, at: now, error: failed == inst.length ? 'all failed' : null);
       return ReceiptLine('NSE filings', failed < inst.length, '$added new${failed > 0 ? ', $failed failed' : ''}');
     };

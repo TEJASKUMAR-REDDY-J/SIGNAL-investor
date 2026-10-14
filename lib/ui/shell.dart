@@ -52,6 +52,7 @@ class _ShellState extends State<Shell> with WidgetsBindingObserver {
   Set<int> _ideaIds = const {};
   List<NewsItem> _newsItems = const [];
   Timer? _liveTimer;
+  Timer? _pricesDebounce;
   String _savedTracked = '';
   late final _refresher = Refresher(
     s.market,
@@ -90,7 +91,18 @@ class _ShellState extends State<Shell> with WidgetsBindingObserver {
     s.refresh = _refresh;
     m.select(m.holidays).get().then((h) => loadHolidays({for (final x in h) x.date: x.name}));
     _subs.addAll([
-      m.select(m.prices).watch().listen((v) => _set(() => _prices = v)),
+      // A refresh writes prices dozens of times; watch a tiny summary and reload the
+      // full table once per burst instead of shipping every row after every write.
+      m
+          .customSelect('SELECT COUNT(*) AS n, MAX(fetched_at) AS t FROM prices', readsFrom: {m.prices})
+          .watch()
+          .listen((_) {
+        _pricesDebounce?.cancel();
+        _pricesDebounce = Timer(Duration(milliseconds: _prices.isEmpty ? 0 : 400), () async {
+          final v = await m.select(m.prices).get();
+          if (mounted) _set(() => _prices = v);
+        });
+      }),
       (m.select(
         m.fetchLog,
       )..where((f) => f.source.equals('full'))).watchSingleOrNull().listen((f) => s.lastRefresh.value = f?.lastOkAt),
@@ -273,6 +285,7 @@ class _ShellState extends State<Shell> with WidgetsBindingObserver {
     WidgetsBinding.instance.removeObserver(this);
     _debounce?.cancel();
     _liveTimer?.cancel();
+    _pricesDebounce?.cancel();
     for (final x in _subs) {
       x.cancel();
     }
