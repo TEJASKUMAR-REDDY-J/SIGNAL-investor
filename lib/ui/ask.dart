@@ -168,7 +168,7 @@ class _AskScreenState extends State<AskScreen> {
                   ),
                 ),
                 const SizedBox(width: 8),
-                IconButton.filled(onPressed: _busy ? null : _send, icon: const Icon(Icons.arrow_upward)),
+                IconButton.filled(tooltip: 'Send', onPressed: _busy ? null : _send, icon: const Icon(Icons.arrow_upward)),
               ]),
             ]),
           ),

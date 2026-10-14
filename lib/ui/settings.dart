@@ -279,7 +279,7 @@ class _GroqCardState extends State<_GroqCard> {
             autocorrect: false,
             decoration: InputDecoration(
               labelText: _hasOwn ? 'Replace this profile\'s key' : 'Paste a Groq API key for this profile',
-              suffixIcon: IconButton(icon: const Icon(Icons.check), onPressed: () => _check(_key.text)),
+              suffixIcon: IconButton(tooltip: 'Check key', icon: const Icon(Icons.check), onPressed: () => _check(_key.text)),
             ),
             onSubmitted: _check,
           ),

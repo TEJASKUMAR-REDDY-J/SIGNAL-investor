@@ -521,7 +521,7 @@ class _ThesisCard extends StatelessWidget {
               contentPadding: EdgeInsets.zero,
               leading: const Icon(Icons.event),
               title: Text(review == null ? 'Set a review date' : 'Review on ${prettyDay(review!)}'),
-              trailing: review == null ? null : IconButton(icon: const Icon(Icons.clear), onPressed: () => set(() => review = null)),
+              trailing: review == null ? null : IconButton(tooltip: 'Clear review date', icon: const Icon(Icons.clear), onPressed: () => set(() => review = null)),
               onTap: () async {
                 final d = await showDatePicker(
                     context: ctx,
