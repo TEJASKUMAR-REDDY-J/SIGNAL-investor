@@ -66,6 +66,15 @@ void main() {
       expect(longTermFrom(buy), d('2026-01-11'));
     });
 
+    test('addMonths forwards and backwards across years', () {
+      expect(addMonths(d('2026-10-05'), -18), d('2025-04-05'));
+      expect(addMonths(d('2026-01-31'), -1), d('2025-12-31'));
+      expect(addMonths(d('2026-03-31'), -1), d('2026-02-28'));
+      expect(addMonths(d('2026-11-30'), 3), d('2027-02-28'));
+      expect(addMonths(d('2024-02-29'), 12), d('2025-02-28'));
+      expect(addMonths(d('2026-10-05'), -120), d('2016-10-05'));
+    });
+
     test('leap years use calendar months, not 365 days', () {
       // 2023-03-01 + 366 days = 2024-03-01 = exactly 12 months: short-term.
       expect(isLongTerm(d('2023-03-01'), d('2024-03-01')), isFalse);
@@ -135,6 +144,24 @@ void main() {
       // LT loss 50k, ST gain 1L -> STCG 1L taxed fully: 20k + 4% = 20,800.
       expect(taxFor(stGainPaise: 10000000, ltGainPaise: -5000000).taxPaise,
           2080000);
+    });
+  });
+
+  group('wait vs sell now', () {
+    test('short-term sale shows extra tax versus waiting for long-term', () {
+      final l = fifo([Tx(1, d('2026-03-01'), TxType.buy, u(100), px(1000))]);
+      final w = compareWait(
+          lots: l.open, units4: u(100), price4: px(1500), date: d('2026-10-12'), realizedAll: const []);
+      expect(w.waitUntil, d('2027-03-02'));
+      expect(w.now.extraTaxPaise, 1040000); // 50k STCG x 20.8%
+      expect(w.later!.extraTaxPaise, 0); // 50k LTCG inside 1.25L exemption
+      expect(w.extraTaxPaise, 1040000);
+    });
+    test('already long-term: nothing to wait for', () {
+      final l = fifo([Tx(1, d('2024-03-01'), TxType.buy, u(1), px(10))]);
+      final w = compareWait(lots: l.open, units4: u(1), price4: px(20), date: d('2026-10-12'), realizedAll: const []);
+      expect(w.waitUntil, isNull);
+      expect(w.extraTaxPaise, 0);
     });
   });
 

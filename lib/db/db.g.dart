@@ -4661,7 +4661,7 @@ class SipPlansCompanion extends UpdateCompanion<SipPlan> {
   }
 }
 
-class $ThesesTable extends Theses with TableInfo<$ThesesTable, These> {
+class $ThesesTable extends Theses with TableInfo<$ThesesTable, Thesis> {
   @override
   final GeneratedDatabase attachedDatabase;
   final String? _alias;
@@ -4724,7 +4724,7 @@ class $ThesesTable extends Theses with TableInfo<$ThesesTable, These> {
   static const String $name = 'theses';
   @override
   VerificationContext validateIntegrity(
-    Insertable<These> instance, {
+    Insertable<Thesis> instance, {
     bool isInserting = false,
   }) {
     final context = VerificationContext();
@@ -4766,9 +4766,9 @@ class $ThesesTable extends Theses with TableInfo<$ThesesTable, These> {
   @override
   Set<GeneratedColumn> get $primaryKey => {instrumentId};
   @override
-  These map(Map<String, dynamic> data, {String? tablePrefix}) {
+  Thesis map(Map<String, dynamic> data, {String? tablePrefix}) {
     final effectivePrefix = tablePrefix != null ? '$tablePrefix.' : '';
-    return These(
+    return Thesis(
       instrumentId: attachedDatabase.typeMapping.read(
         DriftSqlType.int,
         data['${effectivePrefix}instrument_id'],
@@ -4794,12 +4794,12 @@ class $ThesesTable extends Theses with TableInfo<$ThesesTable, These> {
   }
 }
 
-class These extends DataClass implements Insertable<These> {
+class Thesis extends DataClass implements Insertable<Thesis> {
   final int instrumentId;
   final String whyBought;
   final String breaksIf;
   final String? reviewDate;
-  const These({
+  const Thesis({
     required this.instrumentId,
     required this.whyBought,
     required this.breaksIf,
@@ -4828,12 +4828,12 @@ class These extends DataClass implements Insertable<These> {
     );
   }
 
-  factory These.fromJson(
+  factory Thesis.fromJson(
     Map<String, dynamic> json, {
     ValueSerializer? serializer,
   }) {
     serializer ??= driftRuntimeOptions.defaultSerializer;
-    return These(
+    return Thesis(
       instrumentId: serializer.fromJson<int>(json['instrumentId']),
       whyBought: serializer.fromJson<String>(json['whyBought']),
       breaksIf: serializer.fromJson<String>(json['breaksIf']),
@@ -4851,19 +4851,19 @@ class These extends DataClass implements Insertable<These> {
     };
   }
 
-  These copyWith({
+  Thesis copyWith({
     int? instrumentId,
     String? whyBought,
     String? breaksIf,
     Value<String?> reviewDate = const Value.absent(),
-  }) => These(
+  }) => Thesis(
     instrumentId: instrumentId ?? this.instrumentId,
     whyBought: whyBought ?? this.whyBought,
     breaksIf: breaksIf ?? this.breaksIf,
     reviewDate: reviewDate.present ? reviewDate.value : this.reviewDate,
   );
-  These copyWithCompanion(ThesesCompanion data) {
-    return These(
+  Thesis copyWithCompanion(ThesesCompanion data) {
+    return Thesis(
       instrumentId: data.instrumentId.present
           ? data.instrumentId.value
           : this.instrumentId,
@@ -4877,7 +4877,7 @@ class These extends DataClass implements Insertable<These> {
 
   @override
   String toString() {
-    return (StringBuffer('These(')
+    return (StringBuffer('Thesis(')
           ..write('instrumentId: $instrumentId, ')
           ..write('whyBought: $whyBought, ')
           ..write('breaksIf: $breaksIf, ')
@@ -4892,14 +4892,14 @@ class These extends DataClass implements Insertable<These> {
   @override
   bool operator ==(Object other) =>
       identical(this, other) ||
-      (other is These &&
+      (other is Thesis &&
           other.instrumentId == this.instrumentId &&
           other.whyBought == this.whyBought &&
           other.breaksIf == this.breaksIf &&
           other.reviewDate == this.reviewDate);
 }
 
-class ThesesCompanion extends UpdateCompanion<These> {
+class ThesesCompanion extends UpdateCompanion<Thesis> {
   final Value<int> instrumentId;
   final Value<String> whyBought;
   final Value<String> breaksIf;
@@ -4917,7 +4917,7 @@ class ThesesCompanion extends UpdateCompanion<These> {
     this.reviewDate = const Value.absent(),
   }) : whyBought = Value(whyBought),
        breaksIf = Value(breaksIf);
-  static Insertable<These> custom({
+  static Insertable<Thesis> custom({
     Expression<int>? instrumentId,
     Expression<String>? whyBought,
     Expression<String>? breaksIf,
@@ -5778,6 +5778,419 @@ class AuditLogCompanion extends UpdateCompanion<AuditLogData> {
   }
 }
 
+class $HoldingPrefsTable extends HoldingPrefs
+    with TableInfo<$HoldingPrefsTable, HoldingPref> {
+  @override
+  final GeneratedDatabase attachedDatabase;
+  final String? _alias;
+  $HoldingPrefsTable(this.attachedDatabase, [this._alias]);
+  static const VerificationMeta _instrumentIdMeta = const VerificationMeta(
+    'instrumentId',
+  );
+  @override
+  late final GeneratedColumn<int> instrumentId = GeneratedColumn<int>(
+    'instrument_id',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _bucketMeta = const VerificationMeta('bucket');
+  @override
+  late final GeneratedColumn<String> bucket = GeneratedColumn<String>(
+    'bucket',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+    defaultValue: const Constant('core'),
+  );
+  @override
+  List<GeneratedColumn> get $columns => [instrumentId, bucket];
+  @override
+  String get aliasedName => _alias ?? actualTableName;
+  @override
+  String get actualTableName => $name;
+  static const String $name = 'holding_prefs';
+  @override
+  VerificationContext validateIntegrity(
+    Insertable<HoldingPref> instance, {
+    bool isInserting = false,
+  }) {
+    final context = VerificationContext();
+    final data = instance.toColumns(true);
+    if (data.containsKey('instrument_id')) {
+      context.handle(
+        _instrumentIdMeta,
+        instrumentId.isAcceptableOrUnknown(
+          data['instrument_id']!,
+          _instrumentIdMeta,
+        ),
+      );
+    }
+    if (data.containsKey('bucket')) {
+      context.handle(
+        _bucketMeta,
+        bucket.isAcceptableOrUnknown(data['bucket']!, _bucketMeta),
+      );
+    }
+    return context;
+  }
+
+  @override
+  Set<GeneratedColumn> get $primaryKey => {instrumentId};
+  @override
+  HoldingPref map(Map<String, dynamic> data, {String? tablePrefix}) {
+    final effectivePrefix = tablePrefix != null ? '$tablePrefix.' : '';
+    return HoldingPref(
+      instrumentId: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}instrument_id'],
+      )!,
+      bucket: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}bucket'],
+      )!,
+    );
+  }
+
+  @override
+  $HoldingPrefsTable createAlias(String alias) {
+    return $HoldingPrefsTable(attachedDatabase, alias);
+  }
+}
+
+class HoldingPref extends DataClass implements Insertable<HoldingPref> {
+  final int instrumentId;
+  final String bucket;
+  const HoldingPref({required this.instrumentId, required this.bucket});
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    map['instrument_id'] = Variable<int>(instrumentId);
+    map['bucket'] = Variable<String>(bucket);
+    return map;
+  }
+
+  HoldingPrefsCompanion toCompanion(bool nullToAbsent) {
+    return HoldingPrefsCompanion(
+      instrumentId: Value(instrumentId),
+      bucket: Value(bucket),
+    );
+  }
+
+  factory HoldingPref.fromJson(
+    Map<String, dynamic> json, {
+    ValueSerializer? serializer,
+  }) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return HoldingPref(
+      instrumentId: serializer.fromJson<int>(json['instrumentId']),
+      bucket: serializer.fromJson<String>(json['bucket']),
+    );
+  }
+  @override
+  Map<String, dynamic> toJson({ValueSerializer? serializer}) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return <String, dynamic>{
+      'instrumentId': serializer.toJson<int>(instrumentId),
+      'bucket': serializer.toJson<String>(bucket),
+    };
+  }
+
+  HoldingPref copyWith({int? instrumentId, String? bucket}) => HoldingPref(
+    instrumentId: instrumentId ?? this.instrumentId,
+    bucket: bucket ?? this.bucket,
+  );
+  HoldingPref copyWithCompanion(HoldingPrefsCompanion data) {
+    return HoldingPref(
+      instrumentId: data.instrumentId.present
+          ? data.instrumentId.value
+          : this.instrumentId,
+      bucket: data.bucket.present ? data.bucket.value : this.bucket,
+    );
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('HoldingPref(')
+          ..write('instrumentId: $instrumentId, ')
+          ..write('bucket: $bucket')
+          ..write(')'))
+        .toString();
+  }
+
+  @override
+  int get hashCode => Object.hash(instrumentId, bucket);
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      (other is HoldingPref &&
+          other.instrumentId == this.instrumentId &&
+          other.bucket == this.bucket);
+}
+
+class HoldingPrefsCompanion extends UpdateCompanion<HoldingPref> {
+  final Value<int> instrumentId;
+  final Value<String> bucket;
+  const HoldingPrefsCompanion({
+    this.instrumentId = const Value.absent(),
+    this.bucket = const Value.absent(),
+  });
+  HoldingPrefsCompanion.insert({
+    this.instrumentId = const Value.absent(),
+    this.bucket = const Value.absent(),
+  });
+  static Insertable<HoldingPref> custom({
+    Expression<int>? instrumentId,
+    Expression<String>? bucket,
+  }) {
+    return RawValuesInsertable({
+      if (instrumentId != null) 'instrument_id': instrumentId,
+      if (bucket != null) 'bucket': bucket,
+    });
+  }
+
+  HoldingPrefsCompanion copyWith({
+    Value<int>? instrumentId,
+    Value<String>? bucket,
+  }) {
+    return HoldingPrefsCompanion(
+      instrumentId: instrumentId ?? this.instrumentId,
+      bucket: bucket ?? this.bucket,
+    );
+  }
+
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    if (instrumentId.present) {
+      map['instrument_id'] = Variable<int>(instrumentId.value);
+    }
+    if (bucket.present) {
+      map['bucket'] = Variable<String>(bucket.value);
+    }
+    return map;
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('HoldingPrefsCompanion(')
+          ..write('instrumentId: $instrumentId, ')
+          ..write('bucket: $bucket')
+          ..write(')'))
+        .toString();
+  }
+}
+
+class $ProfileSettingsTable extends ProfileSettings
+    with TableInfo<$ProfileSettingsTable, ProfileSetting> {
+  @override
+  final GeneratedDatabase attachedDatabase;
+  final String? _alias;
+  $ProfileSettingsTable(this.attachedDatabase, [this._alias]);
+  static const VerificationMeta _keyMeta = const VerificationMeta('key');
+  @override
+  late final GeneratedColumn<String> key = GeneratedColumn<String>(
+    'key',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _valueMeta = const VerificationMeta('value');
+  @override
+  late final GeneratedColumn<String> value = GeneratedColumn<String>(
+    'value',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  @override
+  List<GeneratedColumn> get $columns => [key, value];
+  @override
+  String get aliasedName => _alias ?? actualTableName;
+  @override
+  String get actualTableName => $name;
+  static const String $name = 'profile_settings';
+  @override
+  VerificationContext validateIntegrity(
+    Insertable<ProfileSetting> instance, {
+    bool isInserting = false,
+  }) {
+    final context = VerificationContext();
+    final data = instance.toColumns(true);
+    if (data.containsKey('key')) {
+      context.handle(
+        _keyMeta,
+        key.isAcceptableOrUnknown(data['key']!, _keyMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_keyMeta);
+    }
+    if (data.containsKey('value')) {
+      context.handle(
+        _valueMeta,
+        value.isAcceptableOrUnknown(data['value']!, _valueMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_valueMeta);
+    }
+    return context;
+  }
+
+  @override
+  Set<GeneratedColumn> get $primaryKey => {key};
+  @override
+  ProfileSetting map(Map<String, dynamic> data, {String? tablePrefix}) {
+    final effectivePrefix = tablePrefix != null ? '$tablePrefix.' : '';
+    return ProfileSetting(
+      key: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}key'],
+      )!,
+      value: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}value'],
+      )!,
+    );
+  }
+
+  @override
+  $ProfileSettingsTable createAlias(String alias) {
+    return $ProfileSettingsTable(attachedDatabase, alias);
+  }
+}
+
+class ProfileSetting extends DataClass implements Insertable<ProfileSetting> {
+  final String key;
+  final String value;
+  const ProfileSetting({required this.key, required this.value});
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    map['key'] = Variable<String>(key);
+    map['value'] = Variable<String>(value);
+    return map;
+  }
+
+  ProfileSettingsCompanion toCompanion(bool nullToAbsent) {
+    return ProfileSettingsCompanion(key: Value(key), value: Value(value));
+  }
+
+  factory ProfileSetting.fromJson(
+    Map<String, dynamic> json, {
+    ValueSerializer? serializer,
+  }) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return ProfileSetting(
+      key: serializer.fromJson<String>(json['key']),
+      value: serializer.fromJson<String>(json['value']),
+    );
+  }
+  @override
+  Map<String, dynamic> toJson({ValueSerializer? serializer}) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return <String, dynamic>{
+      'key': serializer.toJson<String>(key),
+      'value': serializer.toJson<String>(value),
+    };
+  }
+
+  ProfileSetting copyWith({String? key, String? value}) =>
+      ProfileSetting(key: key ?? this.key, value: value ?? this.value);
+  ProfileSetting copyWithCompanion(ProfileSettingsCompanion data) {
+    return ProfileSetting(
+      key: data.key.present ? data.key.value : this.key,
+      value: data.value.present ? data.value.value : this.value,
+    );
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('ProfileSetting(')
+          ..write('key: $key, ')
+          ..write('value: $value')
+          ..write(')'))
+        .toString();
+  }
+
+  @override
+  int get hashCode => Object.hash(key, value);
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      (other is ProfileSetting &&
+          other.key == this.key &&
+          other.value == this.value);
+}
+
+class ProfileSettingsCompanion extends UpdateCompanion<ProfileSetting> {
+  final Value<String> key;
+  final Value<String> value;
+  final Value<int> rowid;
+  const ProfileSettingsCompanion({
+    this.key = const Value.absent(),
+    this.value = const Value.absent(),
+    this.rowid = const Value.absent(),
+  });
+  ProfileSettingsCompanion.insert({
+    required String key,
+    required String value,
+    this.rowid = const Value.absent(),
+  }) : key = Value(key),
+       value = Value(value);
+  static Insertable<ProfileSetting> custom({
+    Expression<String>? key,
+    Expression<String>? value,
+    Expression<int>? rowid,
+  }) {
+    return RawValuesInsertable({
+      if (key != null) 'key': key,
+      if (value != null) 'value': value,
+      if (rowid != null) 'rowid': rowid,
+    });
+  }
+
+  ProfileSettingsCompanion copyWith({
+    Value<String>? key,
+    Value<String>? value,
+    Value<int>? rowid,
+  }) {
+    return ProfileSettingsCompanion(
+      key: key ?? this.key,
+      value: value ?? this.value,
+      rowid: rowid ?? this.rowid,
+    );
+  }
+
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    if (key.present) {
+      map['key'] = Variable<String>(key.value);
+    }
+    if (value.present) {
+      map['value'] = Variable<String>(value.value);
+    }
+    if (rowid.present) {
+      map['rowid'] = Variable<int>(rowid.value);
+    }
+    return map;
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('ProfileSettingsCompanion(')
+          ..write('key: $key, ')
+          ..write('value: $value, ')
+          ..write('rowid: $rowid')
+          ..write(')'))
+        .toString();
+  }
+}
+
 abstract class _$ProfileDb extends GeneratedDatabase {
   _$ProfileDb(QueryExecutor e) : super(e);
   $ProfileDbManager get managers => $ProfileDbManager(this);
@@ -5787,6 +6200,10 @@ abstract class _$ProfileDb extends GeneratedDatabase {
   late final $ThesesTable theses = $ThesesTable(this);
   late final $SignalsTable signals = $SignalsTable(this);
   late final $AuditLogTable auditLog = $AuditLogTable(this);
+  late final $HoldingPrefsTable holdingPrefs = $HoldingPrefsTable(this);
+  late final $ProfileSettingsTable profileSettings = $ProfileSettingsTable(
+    this,
+  );
   @override
   Iterable<TableInfo<Table, Object?>> get allTables =>
       allSchemaEntities.whereType<TableInfo<Table, Object?>>();
@@ -5798,6 +6215,8 @@ abstract class _$ProfileDb extends GeneratedDatabase {
     theses,
     signals,
     auditLog,
+    holdingPrefs,
+    profileSettings,
   ];
   @override
   DriftDatabaseOptions get options =>
@@ -6601,14 +7020,14 @@ class $$ThesesTableTableManager
         RootTableManager<
           _$ProfileDb,
           $ThesesTable,
-          These,
+          Thesis,
           $$ThesesTableFilterComposer,
           $$ThesesTableOrderingComposer,
           $$ThesesTableAnnotationComposer,
           $$ThesesTableCreateCompanionBuilder,
           $$ThesesTableUpdateCompanionBuilder,
-          (These, BaseReferences<_$ProfileDb, $ThesesTable, These>),
-          These,
+          (Thesis, BaseReferences<_$ProfileDb, $ThesesTable, Thesis>),
+          Thesis,
           PrefetchHooks Function()
         > {
   $$ThesesTableTableManager(_$ProfileDb db, $ThesesTable table)
@@ -6649,8 +7068,8 @@ class $$ThesesTableTableManager
           withReferenceMapper: (p0) => p0
               .map(
                 (e) => (
-                  e.readTable<$ThesesTable, These>(table),
-                  BaseReferences<_$ProfileDb, $ThesesTable, These>(
+                  e.readTable<$ThesesTable, Thesis>(table),
+                  BaseReferences<_$ProfileDb, $ThesesTable, Thesis>(
                     db,
                     table,
                     e,
@@ -6667,14 +7086,14 @@ typedef $$ThesesTableProcessedTableManager =
     ProcessedTableManager<
       _$ProfileDb,
       $ThesesTable,
-      These,
+      Thesis,
       $$ThesesTableFilterComposer,
       $$ThesesTableOrderingComposer,
       $$ThesesTableAnnotationComposer,
       $$ThesesTableCreateCompanionBuilder,
       $$ThesesTableUpdateCompanionBuilder,
-      (These, BaseReferences<_$ProfileDb, $ThesesTable, These>),
-      These,
+      (Thesis, BaseReferences<_$ProfileDb, $ThesesTable, Thesis>),
+      Thesis,
       PrefetchHooks Function()
     >;
 typedef $$SignalsTableCreateCompanionBuilder = SignalsCompanion Function({
@@ -7116,6 +7535,303 @@ typedef $$AuditLogTableProcessedTableManager =
       AuditLogData,
       PrefetchHooks Function()
     >;
+typedef $$HoldingPrefsTableCreateCompanionBuilder =
+    HoldingPrefsCompanion Function({
+      Value<int> instrumentId,
+      Value<String> bucket,
+    });
+typedef $$HoldingPrefsTableUpdateCompanionBuilder =
+    HoldingPrefsCompanion Function({
+      Value<int> instrumentId,
+      Value<String> bucket,
+    });
+
+class $$HoldingPrefsTableFilterComposer
+    extends Composer<_$ProfileDb, $HoldingPrefsTable> {
+  $$HoldingPrefsTableFilterComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnFilters<int> get instrumentId => $composableBuilder(
+    column: $table.instrumentId,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get bucket => $composableBuilder(
+    column: $table.bucket,
+    builder: (column) => ColumnFilters(column),
+  );
+}
+
+class $$HoldingPrefsTableOrderingComposer
+    extends Composer<_$ProfileDb, $HoldingPrefsTable> {
+  $$HoldingPrefsTableOrderingComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnOrderings<int> get instrumentId => $composableBuilder(
+    column: $table.instrumentId,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get bucket => $composableBuilder(
+    column: $table.bucket,
+    builder: (column) => ColumnOrderings(column),
+  );
+}
+
+class $$HoldingPrefsTableAnnotationComposer
+    extends Composer<_$ProfileDb, $HoldingPrefsTable> {
+  $$HoldingPrefsTableAnnotationComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  GeneratedColumn<int> get instrumentId => $composableBuilder(
+    column: $table.instrumentId,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<String> get bucket =>
+      $composableBuilder(column: $table.bucket, builder: (column) => column);
+}
+
+class $$HoldingPrefsTableTableManager
+    extends
+        RootTableManager<
+          _$ProfileDb,
+          $HoldingPrefsTable,
+          HoldingPref,
+          $$HoldingPrefsTableFilterComposer,
+          $$HoldingPrefsTableOrderingComposer,
+          $$HoldingPrefsTableAnnotationComposer,
+          $$HoldingPrefsTableCreateCompanionBuilder,
+          $$HoldingPrefsTableUpdateCompanionBuilder,
+          (
+            HoldingPref,
+            BaseReferences<_$ProfileDb, $HoldingPrefsTable, HoldingPref>,
+          ),
+          HoldingPref,
+          PrefetchHooks Function()
+        > {
+  $$HoldingPrefsTableTableManager(_$ProfileDb db, $HoldingPrefsTable table)
+    : super(
+        TableManagerState(
+          db: db,
+          table: table,
+          createFilteringComposer: () =>
+              $$HoldingPrefsTableFilterComposer($db: db, $table: table),
+          createOrderingComposer: () =>
+              $$HoldingPrefsTableOrderingComposer($db: db, $table: table),
+          createComputedFieldComposer: () =>
+              $$HoldingPrefsTableAnnotationComposer($db: db, $table: table),
+          updateCompanionCallback:
+              ({
+                Value<int> instrumentId = const Value.absent(),
+                Value<String> bucket = const Value.absent(),
+              }) => HoldingPrefsCompanion(
+                instrumentId: instrumentId,
+                bucket: bucket,
+              ),
+          createCompanionCallback:
+              ({
+                Value<int> instrumentId = const Value.absent(),
+                Value<String> bucket = const Value.absent(),
+              }) => HoldingPrefsCompanion.insert(
+                instrumentId: instrumentId,
+                bucket: bucket,
+              ),
+          withReferenceMapper: (p0) => p0
+              .map(
+                (e) => (
+                  e.readTable<$HoldingPrefsTable, HoldingPref>(table),
+                  BaseReferences<_$ProfileDb, $HoldingPrefsTable, HoldingPref>(
+                    db,
+                    table,
+                    e,
+                  ),
+                ),
+              )
+              .toList(),
+          prefetchHooksCallback: null,
+        ),
+      );
+}
+
+typedef $$HoldingPrefsTableProcessedTableManager =
+    ProcessedTableManager<
+      _$ProfileDb,
+      $HoldingPrefsTable,
+      HoldingPref,
+      $$HoldingPrefsTableFilterComposer,
+      $$HoldingPrefsTableOrderingComposer,
+      $$HoldingPrefsTableAnnotationComposer,
+      $$HoldingPrefsTableCreateCompanionBuilder,
+      $$HoldingPrefsTableUpdateCompanionBuilder,
+      (
+        HoldingPref,
+        BaseReferences<_$ProfileDb, $HoldingPrefsTable, HoldingPref>,
+      ),
+      HoldingPref,
+      PrefetchHooks Function()
+    >;
+typedef $$ProfileSettingsTableCreateCompanionBuilder =
+    ProfileSettingsCompanion Function({
+      required String key,
+      required String value,
+      Value<int> rowid,
+    });
+typedef $$ProfileSettingsTableUpdateCompanionBuilder =
+    ProfileSettingsCompanion Function({
+      Value<String> key,
+      Value<String> value,
+      Value<int> rowid,
+    });
+
+class $$ProfileSettingsTableFilterComposer
+    extends Composer<_$ProfileDb, $ProfileSettingsTable> {
+  $$ProfileSettingsTableFilterComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnFilters<String> get key => $composableBuilder(
+    column: $table.key,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get value => $composableBuilder(
+    column: $table.value,
+    builder: (column) => ColumnFilters(column),
+  );
+}
+
+class $$ProfileSettingsTableOrderingComposer
+    extends Composer<_$ProfileDb, $ProfileSettingsTable> {
+  $$ProfileSettingsTableOrderingComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnOrderings<String> get key => $composableBuilder(
+    column: $table.key,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get value => $composableBuilder(
+    column: $table.value,
+    builder: (column) => ColumnOrderings(column),
+  );
+}
+
+class $$ProfileSettingsTableAnnotationComposer
+    extends Composer<_$ProfileDb, $ProfileSettingsTable> {
+  $$ProfileSettingsTableAnnotationComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  GeneratedColumn<String> get key =>
+      $composableBuilder(column: $table.key, builder: (column) => column);
+
+  GeneratedColumn<String> get value =>
+      $composableBuilder(column: $table.value, builder: (column) => column);
+}
+
+class $$ProfileSettingsTableTableManager
+    extends
+        RootTableManager<
+          _$ProfileDb,
+          $ProfileSettingsTable,
+          ProfileSetting,
+          $$ProfileSettingsTableFilterComposer,
+          $$ProfileSettingsTableOrderingComposer,
+          $$ProfileSettingsTableAnnotationComposer,
+          $$ProfileSettingsTableCreateCompanionBuilder,
+          $$ProfileSettingsTableUpdateCompanionBuilder,
+          (
+            ProfileSetting,
+            BaseReferences<_$ProfileDb, $ProfileSettingsTable, ProfileSetting>,
+          ),
+          ProfileSetting,
+          PrefetchHooks Function()
+        > {
+  $$ProfileSettingsTableTableManager(
+    _$ProfileDb db,
+    $ProfileSettingsTable table,
+  ) : super(
+        TableManagerState(
+          db: db,
+          table: table,
+          createFilteringComposer: () =>
+              $$ProfileSettingsTableFilterComposer($db: db, $table: table),
+          createOrderingComposer: () =>
+              $$ProfileSettingsTableOrderingComposer($db: db, $table: table),
+          createComputedFieldComposer: () =>
+              $$ProfileSettingsTableAnnotationComposer($db: db, $table: table),
+          updateCompanionCallback: ({
+            Value<String> key = const Value.absent(),
+            Value<String> value = const Value.absent(),
+            Value<int> rowid = const Value.absent(),
+          }) => ProfileSettingsCompanion(key: key, value: value, rowid: rowid),
+          createCompanionCallback:
+              ({
+                required String key,
+                required String value,
+                Value<int> rowid = const Value.absent(),
+              }) => ProfileSettingsCompanion.insert(
+                key: key,
+                value: value,
+                rowid: rowid,
+              ),
+          withReferenceMapper: (p0) => p0
+              .map(
+                (e) => (
+                  e.readTable<$ProfileSettingsTable, ProfileSetting>(table),
+                  BaseReferences<
+                    _$ProfileDb,
+                    $ProfileSettingsTable,
+                    ProfileSetting
+                  >(db, table, e),
+                ),
+              )
+              .toList(),
+          prefetchHooksCallback: null,
+        ),
+      );
+}
+
+typedef $$ProfileSettingsTableProcessedTableManager =
+    ProcessedTableManager<
+      _$ProfileDb,
+      $ProfileSettingsTable,
+      ProfileSetting,
+      $$ProfileSettingsTableFilterComposer,
+      $$ProfileSettingsTableOrderingComposer,
+      $$ProfileSettingsTableAnnotationComposer,
+      $$ProfileSettingsTableCreateCompanionBuilder,
+      $$ProfileSettingsTableUpdateCompanionBuilder,
+      (
+        ProfileSetting,
+        BaseReferences<_$ProfileDb, $ProfileSettingsTable, ProfileSetting>,
+      ),
+      ProfileSetting,
+      PrefetchHooks Function()
+    >;
 
 class $ProfileDbManager {
   final _$ProfileDb _db;
@@ -7132,4 +7848,8 @@ class $ProfileDbManager {
       $$SignalsTableTableManager(_db, _db.signals);
   $$AuditLogTableTableManager get auditLog =>
       $$AuditLogTableTableManager(_db, _db.auditLog);
+  $$HoldingPrefsTableTableManager get holdingPrefs =>
+      $$HoldingPrefsTableTableManager(_db, _db.holdingPrefs);
+  $$ProfileSettingsTableTableManager get profileSettings =>
+      $$ProfileSettingsTableTableManager(_db, _db.profileSettings);
 }

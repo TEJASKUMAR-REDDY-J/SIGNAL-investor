@@ -55,3 +55,9 @@ android/key.properties
 .env
 *.env
 build/symbols/
+
+# Rendered demo screenshots (regenerate with test/screenshots_test.dart)
+screenshots/
+
+# Rendered by test/screenshots_test.dart
+screenshots/

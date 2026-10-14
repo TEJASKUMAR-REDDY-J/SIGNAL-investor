@@ -3,17 +3,17 @@ import 'package:local_auth/local_auth.dart';
 
 import 'db/db.dart';
 import 'db/open_db.dart';
-import 'ui/dashboard.dart';
+import 'engine/portfolio.dart';
+import 'ui/settings.dart';
+import 'ui/shell.dart';
+import 'ui/theme.dart';
+import 'ui/widgets.dart';
 
-void main() => runApp(const App());
-
-const disclaimer =
-    'Personal decision aid only. Not investment, tax or legal advice; the '
-    'authors are not SEBI-registered advisers. Tax figures are estimates for '
-    'listed equity and equity mutual funds only (no surcharge, debt funds or '
-    'grandfathering). Market data comes from unofficial public sources and can '
-    'be wrong or late. Verify everything with your broker, RTA statement or a '
-    'chartered accountant before acting. This app never places orders.';
+Future<void> main() async {
+  WidgetsFlutterBinding.ensureInitialized();
+  await loadThemeMode();
+  runApp(const App());
+}
 
 class App extends StatefulWidget {
   const App({super.key});
@@ -62,8 +62,8 @@ class _AppState extends State<App> with WidgetsBindingObserver {
       if (!ok) return 'Not unlocked.';
       _market ??= await openMarket();
       _profile = await openProfile(p);
-      await _nav.currentState!.push(MaterialPageRoute(
-          builder: (_) => Dashboard(profile: p, db: _profile!, market: _market!, onLock: lock)));
+      final session = Session(p, _profile!, _market!, ValueNotifier<Portfolio?>(null), lock);
+      await _nav.currentState!.push(MaterialPageRoute(builder: (_) => Shell(session: session)));
       return null;
     } on LocalAuthException catch (e) {
       return 'Unlock failed: ${e.code.name}';
@@ -74,13 +74,17 @@ class _AppState extends State<App> with WidgetsBindingObserver {
   }
 
   @override
-  Widget build(BuildContext context) => MaterialApp(
-        navigatorKey: _nav,
-        title: 'SIGNAL Investor',
-        theme: ThemeData(colorSchemeSeed: Colors.teal, useMaterial3: true),
-        darkTheme: ThemeData(
-            colorSchemeSeed: Colors.teal, brightness: Brightness.dark, useMaterial3: true),
-        home: ProfilePicker(onUnlock: unlock),
+  Widget build(BuildContext context) => ValueListenableBuilder(
+        valueListenable: themeMode,
+        builder: (context, mode, _) => MaterialApp(
+          navigatorKey: _nav,
+          title: 'SIGNAL Investor',
+          debugShowCheckedModeBanner: false,
+          theme: buildTheme(Brightness.light),
+          darkTheme: buildTheme(Brightness.dark),
+          themeMode: mode,
+          home: ProfilePicker(onUnlock: unlock),
+        ),
       );
 }
 
@@ -94,7 +98,7 @@ class ProfilePicker extends StatefulWidget {
 class _ProfilePickerState extends State<ProfilePicker> {
   List<Profile>? _profiles;
   bool? _accepted;
-  bool _busy = false;
+  String? _busy;
 
   @override
   void initState() {
@@ -109,79 +113,96 @@ class _ProfilePickerState extends State<ProfilePicker> {
   }
 
   Future<void> _create() async {
-    final c = TextEditingController();
-    final name = await showDialog<String>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('New profile'),
-        content: TextField(
-          controller: c,
-          autofocus: true,
-          maxLength: 30,
-          decoration: const InputDecoration(labelText: 'Display name'),
-          onSubmitted: (v) => Navigator.pop(ctx, v),
-        ),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Cancel')),
-          FilledButton(onPressed: () => Navigator.pop(ctx, c.text), child: const Text('Create')),
-        ],
-      ),
-    );
-    if (name == null || name.trim().isEmpty) return;
-    await createProfile(name);
+    await createProfile();
     await _load();
   }
 
   Future<void> _open(Profile p) async {
-    setState(() => _busy = true);
+    setState(() => _busy = p.id);
     final err = await widget.onUnlock(p);
     if (!mounted) return;
-    setState(() => _busy = false);
-    if (err != null) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(err)));
+    setState(() => _busy = null);
+    if (err != null) snack(context, err);
   }
 
   @override
   Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    final t = Theme.of(context).textTheme;
     if (_profiles == null) return const Scaffold(body: Center(child: CircularProgressIndicator()));
     if (_accepted != true) {
       return Scaffold(
-        appBar: AppBar(title: const Text('Before you start')),
-        body: ListView(padding: const EdgeInsets.all(20), children: [
-          const Icon(Icons.info_outline, size: 48),
-          const SizedBox(height: 16),
-          const Text(disclaimer, style: TextStyle(fontSize: 16, height: 1.4)),
-          const SizedBox(height: 24),
-          FilledButton(
-            onPressed: () async {
-              await storage.write(key: 'disclaimer_ok', value: '1');
-              setState(() => _accepted = true);
-            },
-            child: const Text('I understand'),
-          ),
-        ]),
+        body: SafeArea(
+          child: ListView(padding: const EdgeInsets.fromLTRB(24, 48, 24, 24), children: [
+            Icon(Icons.shield_moon_outlined, size: 56, color: cs.primary),
+            const SizedBox(height: 20),
+            Text('Before you start', style: t.headlineMedium?.copyWith(fontWeight: FontWeight.w700)),
+            const SizedBox(height: 16),
+            Text(disclaimer, style: t.bodyLarge?.copyWith(height: 1.5, color: cs.onSurfaceVariant)),
+            const SizedBox(height: 32),
+            FilledButton(
+              onPressed: () async {
+                await storage.write(key: 'disclaimer_ok', value: '1');
+                setState(() => _accepted = true);
+              },
+              child: const Text('I understand'),
+            ),
+          ]),
+        ),
       );
     }
     return Scaffold(
-      appBar: AppBar(title: const Text('SIGNAL Investor')),
-      body: ListView(children: [
-        for (final p in _profiles!)
-          ListTile(
-            leading: CircleAvatar(child: Text(p.name.characters.first.toUpperCase())),
-            title: Text(p.name),
-            trailing: const Icon(Icons.fingerprint),
-            enabled: !_busy,
-            onTap: () => _open(p),
+      body: SafeArea(
+        child: ListView(padding: const EdgeInsets.fromLTRB(20, 40, 20, 100), children: [
+          Row(children: [
+            Container(
+              padding: const EdgeInsets.all(10),
+              decoration: BoxDecoration(color: cs.primaryContainer, borderRadius: BorderRadius.circular(14)),
+              child: Icon(Icons.insights, color: cs.onPrimaryContainer),
+            ),
+            const SizedBox(width: 12),
+            Text('SIGNAL', style: t.titleLarge?.copyWith(fontWeight: FontWeight.w800, letterSpacing: 1.5)),
+          ]),
+          const SizedBox(height: 28),
+          Text('Track. Rule. Alert.', style: t.headlineMedium?.copyWith(fontWeight: FontWeight.w700)),
+          Text("Don't predict.", style: t.headlineMedium?.copyWith(color: cs.primary, fontWeight: FontWeight.w700)),
+          const SizedBox(height: 32),
+          Text('Who is investing?', style: t.titleMedium?.copyWith(color: cs.onSurfaceVariant)),
+          const SizedBox(height: 12),
+          for (final p in _profiles!)
+            Padding(
+              padding: const EdgeInsets.only(bottom: 10),
+              child: Card(
+                child: ListTile(
+                  contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                  leading: CircleAvatar(
+                    radius: 22,
+                    backgroundColor: avatarColor(p.id),
+                    child: Text(p.badge,
+                        style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w700, fontSize: 18)),
+                  ),
+                  title: Text(p.name, style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 17)),
+                  subtitle: const Text('Encrypted profile'),
+                  trailing: _busy == p.id
+                      ? const SizedBox(width: 24, height: 24, child: CircularProgressIndicator(strokeWidth: 2.5))
+                      : Icon(Icons.fingerprint, color: cs.primary, size: 28),
+                  onTap: _busy == null ? () => _open(p) : null,
+                ),
+              ),
+            ),
+          if (_profiles!.isEmpty)
+            const EmptyState(
+              icon: Icons.group_outlined,
+              title: 'No profiles yet',
+              message: 'Each person gets their own encrypted profile, unlocked with this phone\'s fingerprint or PIN.',
+            ),
+          const SizedBox(height: 8),
+          OutlinedButton.icon(
+            onPressed: _busy == null ? _create : null,
+            icon: const Icon(Icons.person_add_alt),
+            label: const Text('Add profile'),
           ),
-        if (_profiles!.isEmpty)
-          const Padding(
-            padding: EdgeInsets.all(24),
-            child: Text('No profiles yet. Each person gets their own encrypted profile.'),
-          ),
-      ]),
-      floatingActionButton: FloatingActionButton.extended(
-        onPressed: _busy ? null : _create,
-        icon: const Icon(Icons.person_add),
-        label: const Text('Profile'),
+        ]),
       ),
     );
   }

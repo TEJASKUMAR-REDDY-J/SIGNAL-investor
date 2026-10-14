@@ -5,11 +5,15 @@ import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:signal_investor/db/db.dart';
 import 'package:signal_investor/db/open_db.dart';
+import 'package:signal_investor/engine/calendar.dart';
 import 'package:signal_investor/engine/lots.dart';
+import 'package:signal_investor/engine/portfolio.dart';
 import 'package:signal_investor/main.dart';
-import 'package:signal_investor/ui/dashboard.dart';
+import 'package:signal_investor/ui/settings.dart';
+import 'package:signal_investor/ui/shell.dart';
+import 'package:signal_investor/ui/theme.dart';
+import 'package:signal_investor/ui/widgets.dart';
 
-// UI tests use in-memory plain DBs; encryption is covered in db_test.dart.
 /// Awaits a DB/storage future inside fake-async by pumping until it settles.
 Future<T> q<T>(WidgetTester t, Future<T> Function() f) async {
   final fut = f();
@@ -31,15 +35,30 @@ Future<T> q<T>(WidgetTester t, Future<T> Function() f) async {
   return value;
 }
 
+Future<void> settle(WidgetTester t, [int n = 20]) async {
+  for (var i = 0; i < n; i++) {
+    await t.pump(const Duration(milliseconds: 50));
+  }
+}
+
+// UI tests use in-memory plain DBs; encryption is covered in db_test.dart.
 void main() {
   late ProfileDb db;
   late MarketDb market;
+  late Session session;
 
   setUp(() {
     FlutterSecureStorage.setMockInitialValues({});
     db = ProfileDb(NativeDatabase.memory());
     market = MarketDb(NativeDatabase.memory());
+    session = Session(const Profile('p1', 'Profile 1'), db, market, ValueNotifier<Portfolio?>(null), () {});
   });
+
+  void tall(WidgetTester t) {
+    t.view.physicalSize = const Size(1080, 4000);
+    t.view.devicePixelRatio = 2.625;
+    addTearDown(t.view.reset);
+  }
 
   Future<void> close(WidgetTester t) async {
     await t.pumpWidget(const SizedBox());
@@ -50,169 +69,211 @@ void main() {
     await t.pump(const Duration(seconds: 1));
   }
 
-  void tall(WidgetTester t) {
-    t.view.physicalSize = const Size(800, 2400);
-    t.view.devicePixelRatio = 1;
-    addTearDown(t.view.reset);
-  }
+  Widget app([Widget? home]) =>
+      MaterialApp(theme: buildTheme(Brightness.light), home: home ?? Shell(session: session));
 
-  Widget app() => MaterialApp(
-      home: Dashboard(profile: const Profile('p1', 'Asha'), db: db, market: market, onLock: () {}));
+  Future<int> stock(WidgetTester t, String name, String sym) => q(t, () =>
+      market.into(market.instruments).insert(InstrumentsCompanion.insert(kind: 'stock', name: name, nseSymbol: Value(sym))));
 
-  testWidgets('add instrument + buy, view lots, reject oversell, edit, delete', (t) async {
+  testWidgets('add instrument + buy, lots, oversell rejected, edit, delete', (t) async {
     tall(t);
     await t.pumpWidget(app());
-    await t.pumpAndSettle();
-    expect(find.textContaining('No holdings yet'), findsOneWidget);
+    await settle(t);
+    expect(find.text('Start your ledger'), findsOneWidget);
 
-    await t.tap(find.text('Transaction'));
-    await t.pumpAndSettle();
-    await t.tap(find.byTooltip('New fund / stock'));
-    await t.pumpAndSettle();
+    await t.tap(find.text('Add'));
+    await settle(t);
+    await t.tap(find.text('Choose fund or stock'));
+    await settle(t);
+    await t.tap(find.text('New fund / stock'));
+    await settle(t);
     await t.tap(find.text('NSE stock'));
-    await t.pumpAndSettle();
+    await settle(t, 5);
     await t.enterText(find.widgetWithText(TextFormField, 'Name'), 'Reliance Industries');
     await t.enterText(find.widgetWithText(TextFormField, 'NSE symbol'), 'reliance');
-    await t.tap(find.text('Add'));
-    await t.pumpAndSettle();
+    await t.tap(find.widgetWithText(FilledButton, 'Add'));
+    await settle(t);
     final inst = await q(t, () => market.select(market.instruments).getSingle());
-    expect(inst.nseSymbol, 'RELIANCE');
     expect(inst.yahooTicker, 'RELIANCE.NS');
+    expect(find.text('Reliance Industries'), findsOneWidget);
 
     await t.enterText(find.widgetWithText(TextFormField, 'Units'), '10');
-    await t.enterText(find.widgetWithText(TextFormField, 'Price / NAV per unit (₹)'), '2500.5');
-    await t.enterText(find.widgetWithText(TextFormField, 'Charges (₹, optional)'), '20');
-    await t.pump();
-    expect(find.text('Total: ₹25,005.00'), findsOneWidget);
+    await t.enterText(find.widgetWithText(TextFormField, 'Price / NAV per unit'), '2500.5');
+    await t.enterText(find.widgetWithText(TextFormField, 'Charges (optional)'), '20');
+    await settle(t, 3);
+    expect(find.text('₹25,005.00'), findsOneWidget);
     await t.tap(find.text('Save'));
-    await t.pumpAndSettle();
+    await settle(t);
 
-    // Back on dashboard: cost incl. charges.
-    expect(find.text('Reliance Industries'), findsOneWidget);
-    expect(find.text('₹25,025'), findsWidgets);
-
+    // Holdings tab -> detail.
+    await t.tap(find.text('Holdings'));
+    await settle(t);
+    expect(find.text('₹25,025'), findsOneWidget);
     await t.tap(find.text('Reliance Industries'));
-    await t.pumpAndSettle();
-    final lt = fmtDay(longTermFrom(istToday()));
-    expect(find.textContaining('turns long-term on $lt'), findsOneWidget);
+    await settle(t);
+    final lt = longTermFrom(istToday());
+    expect(find.textContaining(prettyDay(lt)), findsOneWidget);
 
-    // Oversell is rejected.
-    await t.tap(find.byTooltip('Add transaction'));
-    await t.pumpAndSettle();
-    await t.tap(find.text('Sell'));
-    await t.pumpAndSettle();
+    // Oversell rejected.
+    await t.tap(find.text('Add').last);
+    await settle(t);
+    await t.tap(find.widgetWithText(ChoiceChip, 'Sell'));
+    await settle(t, 3);
     await t.enterText(find.widgetWithText(TextFormField, 'Units'), '15');
-    await t.enterText(find.widgetWithText(TextFormField, 'Price / NAV per unit (₹)'), '2600');
+    await t.enterText(find.widgetWithText(TextFormField, 'Price / NAV per unit'), '2600');
     await t.tap(find.text('Save'));
-    await t.pumpAndSettle();
+    await settle(t);
     expect(find.textContaining('exceed the units held'), findsOneWidget);
     expect(await q(t, () => db.select(db.transactions).get()), hasLength(1));
     await t.pageBack();
-    await t.pumpAndSettle();
+    await settle(t);
 
-    // Edit to 12 units.
-    await t.tap(find.byType(PopupMenuButton<String>));
-    await t.pumpAndSettle();
-    await t.tap(find.text('Edit'));
-    await t.pumpAndSettle();
+    // Edit (tap history row) to 12 units.
+    await t.tap(find.textContaining('Buy  10'));
+    await settle(t);
     await t.enterText(find.widgetWithText(TextFormField, 'Units'), '12');
-    await t.tap(find.text('Save'));
-    await t.pumpAndSettle();
-    expect(find.text('12 units'), findsOneWidget);
+    await t.tap(find.text('Save changes'));
+    await settle(t);
+    expect(find.textContaining('12 units'), findsWidgets);
 
     // Delete.
-    await t.tap(find.byType(PopupMenuButton<String>));
-    await t.pumpAndSettle();
-    await t.tap(find.text('Delete'));
-    await t.pumpAndSettle();
+    await t.tap(find.byTooltip('Delete'));
+    await settle(t);
     await t.tap(find.widgetWithText(FilledButton, 'Delete'));
-    await t.pumpAndSettle();
-    expect(find.text('No open lots'), findsOneWidget);
-
+    await settle(t);
+    expect(find.text('No open lots.'), findsOneWidget);
     final audit = await q(t, () => db.select(db.auditLog).get());
     expect(audit.map((a) => a.action), ['insert', 'edit', 'delete']);
     await close(t);
   });
 
-  testWidgets('cannot delete a buy that a later sell depends on; dividends and SIP', (t) async {
+  testWidgets('cannot delete a buy a later sell needs; split and dividend shown', (t) async {
     tall(t);
+    final id = await stock(t, 'Infosys', 'INFY');
     await q(t, () async {
-      final id = await market.into(market.instruments).insert(
-          InstrumentsCompanion.insert(kind: 'mf', name: 'Index Fund', schemeCode: const Value('120716')));
-      await db.addTx(TransactionsCompanion.insert(
-          instrumentId: id, date: '2024-01-10', type: 'sip', unitsE4: 1234567, priceE4: 405000));
-      await db.addTx(TransactionsCompanion.insert(
-          instrumentId: id, date: '2025-06-01', type: 'sell', unitsE4: 1000000, priceE4: 500000));
-      await db.addTx(TransactionsCompanion.insert(
-          instrumentId: id, date: '2025-07-01', type: 'dividend', unitsE4: 0, priceE4: 1500000));
+      await db.addTx(TransactionsCompanion.insert(instrumentId: id, date: '2024-01-10', type: 'buy', unitsE4: 100000, priceE4: 15000000));
+      await db.addTx(TransactionsCompanion.insert(instrumentId: id, date: '2025-03-03', type: 'split', unitsE4: 20000, priceE4: 0));
+      await db.addTx(TransactionsCompanion.insert(instrumentId: id, date: '2025-06-02', type: 'sell', unitsE4: 150000, priceE4: 9000000));
+      await db.addTx(TransactionsCompanion.insert(instrumentId: id, date: '2025-07-01', type: 'dividend', unitsE4: 0, priceE4: 1500000));
     });
     await t.pumpWidget(app());
-    await t.pumpAndSettle();
-    await t.tap(find.text('Index Fund'));
-    await t.pumpAndSettle();
-    expect(find.text('23.4567 units'), findsOneWidget);
-    expect(find.textContaining('long-term since 2025-01-11'), findsOneWidget);
-    expect(find.textContaining('LTCG'), findsOneWidget);
-    expect(find.textContaining('Dividends ₹150.00'), findsOneWidget);
-
-    // Transactions are listed newest first; the SIP is last.
-    await t.ensureVisible(find.byType(PopupMenuButton<String>).last);
-    await t.pumpAndSettle();
-    await t.tap(find.byType(PopupMenuButton<String>).last);
-    await t.pumpAndSettle();
-    await t.tap(find.text('Delete'));
-    await t.pumpAndSettle();
+    await settle(t);
+    await t.tap(find.text('Holdings'));
+    await settle(t);
+    await t.tap(find.text('Infosys'));
+    await settle(t);
+    expect(find.textContaining('5 units · avg'), findsOneWidget); // 10 -> 20 after split, sold 15
+    expect(find.textContaining('Split  1 → 2'), findsOneWidget);
+    expect(find.text('LTCG'), findsOneWidget);
+    expect(find.textContaining('₹150'), findsWidgets);
+    // Delete the buy (last history row).
+    await t.tap(find.byTooltip('Delete').last);
+    await settle(t);
     expect(find.textContaining('Cannot delete'), findsOneWidget);
-    expect(await q(t, () => db.select(db.transactions).get()), hasLength(3));
+    expect(await q(t, () => db.select(db.transactions).get()), hasLength(4));
     await close(t);
   });
 
-  testWidgets('tiles resize on long-press and the layout persists', (t) async {
+  testWidgets('home tiles resize on long-press, hide via customize, persist', (t) async {
     t.view.physicalSize = const Size(1080, 2400);
-    t.view.devicePixelRatio = 3; // 360 dp phone
+    t.view.devicePixelRatio = 2.625;
     addTearDown(t.view.reset);
-    final id = (await q(t, () async {
-      final id = await market.into(market.instruments).insert(InstrumentsCompanion.insert(kind: 'stock', name: 'TCS'));
-      await db.addTx(TransactionsCompanion.insert(
-          instrumentId: id, date: '2025-01-10', type: 'buy', unitsE4: 10000, priceE4: 40000000));
-      return id;
-    }));
+    final id = await stock(t, 'TCS', 'TCS');
+    await q(t, () => db.addTx(
+        TransactionsCompanion.insert(instrumentId: id, date: '2025-01-10', type: 'buy', unitsE4: 10000, priceE4: 40000000)));
     await t.pumpWidget(app());
-    await t.pumpAndSettle();
-    final tile = find.byKey(ValueKey('tile-i$id'));
+    await settle(t);
+    final tile = find.byKey(const ValueKey('tile-alloc'));
     final w1 = t.getSize(tile).width;
-    await t.longPress(find.text('TCS'));
-    await t.pumpAndSettle();
-    final w2 = t.getSize(tile).width;
-    expect(w2, greaterThan(w1 * 1.8));
-    expect(find.textContaining('Next lot turns long-term'), findsNothing); // already LT
-    expect(find.textContaining('Long-term units: 1'), findsOneWidget);
-    expect(await q(t, () => storage.read(key: 'layout_p1')), contains('"i$id":2'));
-    // Summary shrinks to small on long-press (3 -> 1).
-    final s1 = t.getSize(find.byKey(const ValueKey('tile-summary'))).width;
-    await t.longPress(find.text('Invested (cost)'));
-    await t.pumpAndSettle();
-    expect(t.getSize(find.byKey(const ValueKey('tile-summary'))).width, lessThan(s1 / 1.8));
-    expect(find.textContaining('LTCG exemption left'), findsNothing);
+    await t.longPress(find.text('ALLOCATION'));
+    await settle(t);
+    expect(t.getSize(tile).width, greaterThan(w1 * 1.8));
+    expect(await q(t, () => storage.read(key: 'layout2_p1')), contains('"alloc":2'));
+
+    await t.tap(find.byTooltip('Customize home'));
+    await settle(t);
+    final row = find.ancestor(of: find.text('Allocation'), matching: find.byType(ListTile));
+    await t.tap(find.descendant(of: row, matching: find.byType(Switch)));
+    await settle(t);
+    await t.tapAt(const Offset(200, 40)); // dismiss sheet
+    await settle(t);
+    expect(find.byKey(const ValueKey('tile-alloc')), findsNothing);
+    expect(await q(t, () => storage.read(key: 'layout2_p1')), contains('"hidden":["alloc"]'));
+    await close(t);
+  });
+
+  testWidgets('plan: SIP plan with missed instalment, record prefilled, add goal', (t) async {
+    tall(t);
+    final id = await q(t, () => market.into(market.instruments).insert(
+        InstrumentsCompanion.insert(kind: 'mf', name: 'Nifty Index', schemeCode: const Value('120716'))));
+    final today = istToday();
+    final start = DateTime.utc(today.year, today.month - 2, 3);
+    await q(t, () async {
+      await db.saveSip(SipPlansCompanion.insert(instrumentId: id, amountPaise: 500000, dayOfMonth: 3, start: fmtDay(start)));
+      // Only the first instalment recorded.
+      await db.addTx(TransactionsCompanion.insert(
+          instrumentId: id, date: fmtDay(nse.onOrAfter(start)), type: 'sip', unitsE4: 100000, priceE4: 500000));
+    });
+    await t.pumpWidget(app());
+    await settle(t);
+    await t.tap(find.text('Plan'));
+    await settle(t);
+    expect(find.text('1 recorded'), findsOneWidget);
+    expect(find.textContaining('missed'), findsWidgets);
+    await t.tap(find.text('Record').first);
+    await settle(t);
+    expect(find.text('Record SIP'), findsOneWidget);
+    expect(find.text('Nifty Index'), findsOneWidget);
+    expect(find.widgetWithText(TextFormField, 'Amount invested'), findsOneWidget);
+    await t.pageBack();
+    await settle(t);
+
+    await t.tap(find.text('Goal'));
+    await settle(t);
+    await t.enterText(find.widgetWithText(TextFormField, 'Name'), 'Masters');
+    await t.enterText(find.widgetWithText(TextFormField, 'Target amount'), '1500000');
+    await t.tap(find.text('Save'));
+    await settle(t);
+    expect(find.text('Masters'), findsOneWidget);
+    final g = await q(t, () => db.select(db.goals).getSingle());
+    expect(g.targetPaise, 150000000);
+    await close(t);
+  });
+
+  testWidgets('settings theme toggle persists', (t) async {
+    tall(t);
+    await t.pumpWidget(app(SettingsScreen(session: session)));
+    await settle(t);
+    await t.tap(find.text('Dark'));
+    await settle(t);
+    expect(themeMode.value, ThemeMode.dark);
+    expect(await q(t, () => storage.read(key: 'theme_mode')), 'dark');
+    await q(t, () => setThemeMode(ThemeMode.system));
     await close(t);
   });
 
   testWidgets('first run shows disclaimer, then profile creation', (t) async {
+    tall(t);
     await t.pumpWidget(const App());
-    await t.pumpAndSettle();
+    await settle(t);
     expect(find.textContaining('Not investment, tax or legal advice'), findsOneWidget);
     await t.tap(find.text('I understand'));
-    await t.pumpAndSettle();
-    expect(find.textContaining('No profiles yet'), findsOneWidget);
-    await t.tap(find.text('Profile'));
-    await t.pumpAndSettle();
-    await t.enterText(find.byType(TextField), 'Ravi');
-    await t.tap(find.text('Create'));
-    await t.pumpAndSettle();
-    expect(find.text('Ravi'), findsOneWidget);
+    await settle(t);
+    expect(find.text('No profiles yet'), findsOneWidget);
+    await t.tap(find.text('Add profile'));
+    await settle(t);
+    await t.tap(find.text('Add profile'));
+    await settle(t);
+    expect(find.text('Profile 1'), findsOneWidget);
+    expect(find.text('Profile 2'), findsOneWidget);
+    expect(find.byType(TextField), findsNothing); // never asks for a name
     final ps = await q(t, loadProfiles);
-    expect(ps.single.name, 'Ravi');
-    expect(await q(t, () => storage.read(key: 'key_${ps.single.id}')), matches(RegExp(r'^[0-9a-f]{64}$')));
+    expect(ps.map((p) => p.name), ['Profile 1', 'Profile 2']);
+    expect(ps.last.badge, '2');
+    for (final p in ps) {
+      expect(await q(t, () => storage.read(key: 'key_${p.id}')), matches(RegExp(r'^[0-9a-f]{64}$')));
+    }
+    expect(ps.first.id, isNot(ps.last.id));
     await close(t);
   });
 }

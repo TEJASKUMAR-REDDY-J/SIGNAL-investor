@@ -4,6 +4,7 @@ import 'dart:math';
 
 import 'package:drift/drift.dart' show QueryExecutor;
 import 'package:drift/native.dart';
+import 'package:flutter/widgets.dart' show StringCharacters;
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:path_provider/path_provider.dart';
 
@@ -20,6 +21,9 @@ class Profile {
   final String name;
   const Profile(this.id, this.name);
   String get dbFile => 'profile_$id.db';
+
+  /// Avatar text: the profile number ("Profile 2" -> "2").
+  String get badge => RegExp(r'(\d+)$').firstMatch(name)?.group(1) ?? name.characters.first.toUpperCase();
   Map<String, String> toJson() => {'id': id, 'name': name, 'db': dbFile};
 }
 
@@ -92,10 +96,15 @@ Future<List<Profile>> loadProfiles() async {
   ];
 }
 
-Future<Profile> createProfile(String name) async {
+/// Profiles carry no personal names: they are labelled "Profile N".
+Future<Profile> createProfile() async {
   final list = await loadProfiles();
   final id = newHexKey().substring(0, 12);
-  final p = Profile(id, name.trim());
+  var n = list.length + 1;
+  while (list.any((p) => p.name == 'Profile $n')) {
+    n++;
+  }
+  final p = Profile(id, 'Profile $n');
   await storage.write(key: 'key_$id', value: newHexKey());
   await storage.write(
       key: 'profiles', value: jsonEncode([...list, p].map((e) => e.toJson()).toList()));

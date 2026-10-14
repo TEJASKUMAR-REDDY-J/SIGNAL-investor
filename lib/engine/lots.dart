@@ -18,8 +18,8 @@ String fmtDay(DateTime d) =>
 /// Same calendar day [months] later, clamped to month end (31 Jan + 1m = 28/29 Feb).
 DateTime addMonths(DateTime d, int months) {
   final m0 = d.month - 1 + months;
-  final y = d.year + (m0 ~/ 12);
-  final m = m0 % 12 + 1;
+  final m = m0 % 12 + 1; // Dart % is non-negative
+  final y = d.year + (m0 - (m - 1)) ~/ 12; // floor division, also for m0 < 0
   final last = DateTime.utc(y, m + 1, 0).day;
   return DateTime.utc(y, m, d.day > last ? last : d.day);
 }
@@ -31,9 +31,14 @@ DateTime longTermFrom(DateTime buy) =>
 
 bool isLongTerm(DateTime buy, DateTime sell) => !sell.isBefore(longTermFrom(buy));
 
-enum TxType { buy, sell, sip, dividend }
+enum TxType { buy, sell, sip, dividend, split, bonus }
 
-/// One ledger row. Dividend: units4 = 0, price4 = total amount x1e4.
+/// One ledger row.
+/// dividend: units4 = 0, price4 = total amount x1e4.
+/// split:    units4 = new units per old unit x1e4 (1 -> 5 split = 50000);
+///           lots keep buy date and cost.
+/// bonus:    units4 = bonus units per unit held x1e4 (1:1 = 10000); bonus
+///           units form a new lot at zero cost dated on allotment.
 class Tx {
   final int id;
   final DateTime date;
@@ -41,8 +46,9 @@ class Tx {
   final int units4;
   final int price4;
   final int feesPaise;
+  final int? goalId;
   const Tx(this.id, this.date, this.type, this.units4, this.price4,
-      [this.feesPaise = 0]);
+      [this.feesPaise = 0, this.goalId]);
 
   bool get adds => type == TxType.buy || type == TxType.sip;
 }
@@ -51,7 +57,8 @@ class Lot {
   final DateTime buyDate;
   final int units4;
   final int costPaise;
-  const Lot(this.buyDate, this.units4, this.costPaise);
+  final int? goalId;
+  const Lot(this.buyDate, this.units4, this.costPaise, [this.goalId]);
   DateTime get longTermDate => longTermFrom(buyDate);
 }
 
@@ -80,11 +87,17 @@ class Ledger {
   int get costPaise => open.fold(0, (a, l) => a + l.costPaise);
 }
 
-/// Ledger order: date, then adds before sells on the same day, then id.
+int _rank(TxType t) => switch (t) {
+      TxType.split || TxType.bonus => 0, // corporate actions open the ex-date
+      TxType.sell => 2,
+      _ => 1,
+    };
+
+/// Ledger order: date, then corporate actions, adds, sells; then id.
 int compareTx(Tx a, Tx b) {
   final c = a.date.compareTo(b.date);
   if (c != 0) return c;
-  final s = (a.type == TxType.sell ? 1 : 0) - (b.type == TxType.sell ? 1 : 0);
+  final s = _rank(a.type) - _rank(b.type);
   return s != 0 ? s : a.id.compareTo(b.id);
 }
 
@@ -102,7 +115,18 @@ Ledger fifo(Iterable<Tx> txs) {
       case TxType.buy || TxType.sip:
         if (t.units4 <= 0) continue;
         open.add(Lot(t.date, t.units4,
-            valuePaise(t.units4, t.price4) + t.feesPaise));
+            valuePaise(t.units4, t.price4) + t.feesPaise, t.goalId));
+      case TxType.split:
+        if (t.units4 <= 0) continue;
+        for (var i = 0; i < open.length; i++) {
+          final l = open[i];
+          open[i] = Lot(l.buyDate, mulDiv(l.units4, t.units4, unitScale),
+              l.costPaise, l.goalId);
+        }
+      case TxType.bonus:
+        final held = open.fold(0, (a, l) => a + l.units4);
+        final extra = mulDiv(held, t.units4, unitScale);
+        if (extra > 0) open.add(Lot(t.date, extra, 0));
       case TxType.sell:
         final held = open.fold(0, (a, l) => a + l.units4);
         if (t.units4 > held) oversold.add(t.id);
@@ -137,7 +161,8 @@ List<Realized> sellFifo(
     if (take == lot.units4) {
       open.removeAt(0);
     } else {
-      open[0] = Lot(lot.buyDate, lot.units4 - take, lot.costPaise - cost);
+      open[0] =
+          Lot(lot.buyDate, lot.units4 - take, lot.costPaise - cost, lot.goalId);
     }
   }
   return out;

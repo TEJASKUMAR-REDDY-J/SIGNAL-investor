@@ -83,3 +83,30 @@ SaleEstimate estimateSale({
   return SaleEstimate(
       sale, after - before, sale.fold(0, (a, r) => a + r.proceedsPaise));
 }
+
+class WaitComparison {
+  final SaleEstimate now;
+  final DateTime? waitUntil; // when every sold lot is long-term; null if already
+  final SaleEstimate? later;
+  const WaitComparison(this.now, this.waitUntil, this.later);
+
+  /// Extra tax from selling today instead of on [waitUntil], same price assumed.
+  int get extraTaxPaise => later == null ? 0 : now.extraTaxPaise - later!.extraTaxPaise;
+}
+
+WaitComparison compareWait({
+  required List<Lot> lots,
+  required int units4,
+  required int price4,
+  required DateTime date,
+  required Iterable<Realized> realizedAll,
+  int feesPaise = 0,
+}) {
+  SaleEstimate at(DateTime d) => estimateSale(
+      lots: lots, units4: units4, price4: price4, date: d, realizedAll: realizedAll, feesPaise: feesPaise);
+  final now = at(date);
+  final short = now.slices.where((s) => !s.longTerm);
+  if (short.isEmpty) return WaitComparison(now, null, null);
+  final until = short.map((s) => longTermFrom(s.buyDate)).reduce((a, b) => a.isAfter(b) ? a : b);
+  return WaitComparison(now, until, at(until));
+}
