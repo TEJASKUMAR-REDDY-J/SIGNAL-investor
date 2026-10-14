@@ -171,7 +171,10 @@ class Portfolio {
       (byInst[t.instrumentId] ??= []).add(t.tx);
     }
     final ledgers = {for (final e in byInst.entries) e.key: fifo(e.value)};
-    final lastDay = nse.lastTradingDay(DateTime.now());
+    // Staleness is judged at the end of [today] when a date is given (tests,
+    // time machine); otherwise at the real current instant.
+    final nowUtc = today == null ? DateTime.now() : DateTime.utc(today.year, today.month, today.day, 18, 29);
+    final lastDay = nse.lastTradingDay(nowUtc);
     // NAVs land late at night: one trading day of lag is normal for funds.
     final navOk = nse.onOrBefore(lastDay.subtract(const Duration(days: 1)));
     final holdings = <Holding>[];
