@@ -11,6 +11,7 @@ import 'package:signal_investor/engine/calendar.dart';
 import 'package:signal_investor/engine/lots.dart';
 import 'package:signal_investor/engine/portfolio.dart';
 import 'package:signal_investor/main.dart';
+import 'package:signal_investor/ui/sandbox.dart';
 import 'package:signal_investor/ui/settings.dart';
 import 'package:signal_investor/ui/shell.dart';
 import 'package:signal_investor/ui/theme.dart';
@@ -272,6 +273,32 @@ void main() {
     final inst = await q(t, () => (market.select(market.instruments)..where((i) => i.nseSymbol.equals('INFY'))).getSingle());
     expect(inst.yahooTicker, 'INFY.NS');
     expect(find.text('Infosys Limited'), findsOneWidget); // selected in the form
+    await close(t);
+  });
+
+  testWidgets('scan "Try in sandbox" offers one buy sheet; cancel does not reopen it; buy lands once', (t) async {
+    tall(t);
+    final id = await stock(t, 'Oracle Financial', 'OFSS');
+    await q(t, () => market.putPrices(id, 'yahoo', [('2026-10-13', 90000000)]));
+    await t.pumpWidget(app());
+    await settle(t, 40);
+    t.state<NavigatorState>(find.byType(Navigator).first)
+        .push(MaterialPageRoute(builder: (_) => SandboxScreen(session: session, buyInstrumentId: id)));
+    await settle(t);
+    expect(find.text('Buy at latest price'), findsOneWidget);
+    await t.tapAt(const Offset(20, 20)); // dismiss
+    await settle(t);
+    expect(find.text('Buy at latest price'), findsNothing);
+    await t.tap(find.text('Paper buy'));
+    await settle(t);
+    await t.tap(find.byType(DropdownButtonFormField<int>));
+    await settle(t);
+    await t.tap(find.text('Oracle Financial').last);
+    await settle(t);
+    await t.tap(find.text('Buy at latest price'));
+    await settle(t, 40);
+    expect(find.text('Buy at latest price'), findsNothing);
+    expect(await q(t, () => db.select(db.paperTrades).get()), hasLength(1));
     await close(t);
   });
 

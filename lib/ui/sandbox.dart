@@ -36,13 +36,22 @@ int paperCash(List<PaperTrade> t) {
 
 /// The sandbox: practise with virtual money at real prices. Patience is the game:
 /// lots ripen, short-term exits show their tax, and the ghost index runs alongside.
-class SandboxScreen extends StatelessWidget {
+class SandboxScreen extends StatefulWidget {
   final Session session;
   final int? buyInstrumentId;
   const SandboxScreen({super.key, required this.session, this.buyInstrumentId});
 
   @override
+  State<SandboxScreen> createState() => _SandboxScreenState();
+}
+
+class _SandboxScreenState extends State<SandboxScreen> {
+  Session get session => widget.session;
+  bool _offered = false; // the scan's "Try in sandbox" opens the buy sheet once, never again on rebuild
+
+  @override
   Widget build(BuildContext context) {
+    final buyInstrumentId = widget.buyInstrumentId;
     final db = session.db;
     final cs = Theme.of(context).colorScheme;
     return StreamBuilder(
@@ -53,10 +62,13 @@ class SandboxScreen extends StatelessWidget {
         final p = Portfolio.compute(txs: paperTxs(trades), instruments: real.instruments.values.toList(), book: real.book);
         final cash = paperCash(trades);
         final total = cash + p.valuePaise;
-        if (buyInstrumentId != null && snap.hasData && trades.every((t) => t.instrumentId != buyInstrumentId)) {
-          WidgetsBinding.instance.addPostFrameCallback((_) {
-            if (context.mounted && ModalRoute.of(context)?.isCurrent == true) _buy(context, cash, buyInstrumentId);
-          });
+        if (!_offered && buyInstrumentId != null && snap.hasData) {
+          _offered = true;
+          if (trades.every((t) => t.instrumentId != buyInstrumentId)) {
+            WidgetsBinding.instance.addPostFrameCallback((_) {
+              if (context.mounted) _buy(context, cash, buyInstrumentId);
+            });
+          }
         }
         return Scaffold(
           appBar: AppBar(title: const Text('Sandbox')),
@@ -74,7 +86,7 @@ class SandboxScreen extends StatelessWidget {
                   Row(children: [
                     Icon(Icons.science_outlined, color: cs.primary),
                     const SizedBox(width: 8),
-                    const Text('Paper money only. Real prices.', style: TextStyle(fontWeight: FontWeight.w600)),
+                    const Flexible(child: Text('Paper money only. Real prices.', style: TextStyle(fontWeight: FontWeight.w600))),
                   ]),
                   const SizedBox(height: 10),
                   FittedBox(child: Money(total, style: Theme.of(context).textTheme.headlineMedium?.copyWith(fontWeight: FontWeight.w700))),
