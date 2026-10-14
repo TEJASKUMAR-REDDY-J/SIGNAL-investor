@@ -107,7 +107,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
             ),
           ),
           const SectionHeader('News pulse'),
-          const _NewsCard(),
+          _NewsCard(session: widget.session),
           const SectionHeader('AI (Groq)'),
           _GroqCard(session: widget.session),
           const SectionHeader('Look back'),
@@ -316,7 +316,8 @@ class _GroqCardState extends State<_GroqCard> {
 
 /// Daily news job: on/off for the notification, and a manual run.
 class _NewsCard extends StatefulWidget {
-  const _NewsCard();
+  final Session session;
+  const _NewsCard({required this.session});
   @override
   State<_NewsCard> createState() => _NewsCardState();
 }
@@ -347,7 +348,8 @@ class _NewsCardState extends State<_NewsCard> {
   Future<void> _runNow() async {
     setState(() => _busy = true);
     try {
-      final line = await runDaily(manual: true);
+      // The app's own connection, so Home updates the moment new labels land.
+      final line = await runDaily(manual: true, market: widget.session.market);
       await _loadLast();
       if (mounted) snack(context, line ?? 'Checked. Nothing new labelled for the companies you follow.');
     } catch (e) {

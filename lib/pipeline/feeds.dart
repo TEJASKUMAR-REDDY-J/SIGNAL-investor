@@ -14,9 +14,9 @@ typedef GroqConfig = Future<(String key, String model)?> Function();
 
 /// NSE corporate announcements for held stocks, last 7 days. Optional source:
 /// NSE's bot filter sometimes refuses; failures are logged and skipped.
-Step filingsStep(MarketDb m, Net net, HeldIds held) => (now) async {
+Step filingsStep(MarketDb m, Net net, HeldIds held) => (now, force) async {
       final st = await m.fetchState('filings');
-      if (!feedStale(st?.lastAttemptAt?.toUtc(), now)) return null;
+      if (!force && !feedStale(st?.lastAttemptAt?.toUtc(), now)) return null;
       final inst = await (m.select(m.instruments)
             ..where((i) => i.id.isIn(held()) & i.nseSymbol.isNotNull()))
           .get();
@@ -50,9 +50,9 @@ Step filingsStep(MarketDb m, Net net, HeldIds held) => (now) async {
     };
 
 /// RSS + one GDELT query -> 72h, matched to holdings, deduped, then tagged.
-Step newsStep(MarketDb m, Net net, HeldIds held, GroqConfig groq) => (now) async {
+Step newsStep(MarketDb m, Net net, HeldIds held, GroqConfig groq) => (now, force) async {
       final st = await m.fetchState('news');
-      if (!feedStale(st?.lastAttemptAt?.toUtc(), now)) return null;
+      if (!force && !feedStale(st?.lastAttemptAt?.toUtc(), now)) return null;
       final inst = await (m.select(m.instruments)..where((i) => i.id.isIn(held()) & i.kind.equals('stock'))).get();
       if (inst.isEmpty) return null;
       final heads = <Headline>[];
@@ -63,8 +63,18 @@ Step newsStep(MarketDb m, Net net, HeldIds held, GroqConfig groq) => (now) async
         fetchGdelt(net, [for (final i in inst) i.name]).then(heads.addAll, onError: (_) => fails++),
       ]);
       final cutoff = now.subtract(const Duration(hours: 72));
-      final terms = {for (final i in inst) i.id: matchTerms(i.name, i.nseSymbol, i.aliases)};
+      // Names shared by several listed companies ("Anand Rathi ...") are not enough to match.
+      final shared = sharedPrefixes([for (final u in await m.select(m.universe).get()) u.name]);
+      final terms = {for (final i in inst) i.id: matchTerms(i.name, i.nseSymbol, i.aliases, shared: shared)};
       final recent = await (m.select(m.newsItems)..where((n) => n.publishedAt.isBiggerOrEqualValue(cutoff))).get();
+      // Unlink headlines an older, looser match tied to the wrong company.
+      for (final n in recent) {
+        final t = terms[n.instrumentId];
+        if (t != null && !mentions(n.title, t)) {
+          await (m.update(m.newsItems)..where((x) => x.urlHash.equals(n.urlHash)))
+              .write(const NewsItemsCompanion(instrumentId: Value(null), label: Value(null)));
+        }
+      }
       final seenTitles = {for (final n in recent) normTitle(n.title)};
       var added = 0;
       for (final h in heads) {

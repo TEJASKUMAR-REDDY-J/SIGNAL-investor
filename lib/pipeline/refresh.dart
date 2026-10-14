@@ -40,7 +40,8 @@ class ReceiptLine {
 }
 
 /// Extra pipeline step (filings, news, tagging) plugged in by later phases.
-typedef Step = Future<ReceiptLine?> Function(DateTime nowUtc);
+/// [force] (pull to refresh, "Check now") skips the step's own staleness check.
+typedef Step = Future<ReceiptLine?> Function(DateTime nowUtc, bool force);
 
 class Refresher {
   final MarketDb m;
@@ -218,7 +219,7 @@ class Refresher {
 
     for (final s in extra) {
       try {
-        final l = await s(now);
+        final l = await s(now, force);
         if (l != null) emit(l);
       } catch (e) {
         emit(ReceiptLine('Step', false, _short(e)));

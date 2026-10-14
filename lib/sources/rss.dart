@@ -107,14 +107,40 @@ String normTitle(String t) => t.toLowerCase().replaceAll(RegExp(r'[^a-z0-9 ]'), 
 
 const _generic = {'ltd', 'limited', 'ltd.', 'the', 'india', 'of', 'and', '&', 'co', 'company', 'corporation', 'corp', 'inc'};
 
-/// Phrases that identify a company in a headline: name without generic words,
-/// the NSE symbol (4+ letters) and user aliases.
-List<String> matchTerms(String name, String? symbol, String aliases) {
-  final words = [for (final w in normTitle(name).split(' ')) if (!_generic.contains(w)) w];
+List<String> _nameWords(String name) => [for (final w in normTitle(name).split(' ')) if (w.isNotEmpty && !_generic.contains(w)) w];
+
+/// One- and two-word name prefixes used by two or more listed companies
+/// ("tata", "bajaj", "anand rathi"): too vague to identify a company on their own.
+Set<String> sharedPrefixes(Iterable<String> listedNames) {
+  final seen = <String, int>{};
+  for (final n in listedNames) {
+    final w = _nameWords(n);
+    for (var k = 1; k <= 2 && k <= w.length; k++) {
+      final p = w.take(k).join(' ');
+      seen[p] = (seen[p] ?? 0) + 1;
+    }
+  }
+  return {for (final e in seen.entries) if (e.value >= 2) e.key};
+}
+
+/// Phrases that identify a company in a headline: the shortest name prefix no other
+/// listed company shares ("anand rathi wealth", not "anand rathi", which is also
+/// Anand Rathi Share and Stock Brokers), the NSE symbol (4+ letters) and user aliases.
+List<String> matchTerms(String name, String? symbol, String aliases, {Set<String> shared = const {}}) {
+  final words = _nameWords(name);
+  String? prefix;
+  for (var k = 1; k <= words.length; k++) {
+    final p = words.take(k).join(' ');
+    if (k == 1 && p.length < 5) continue; // "hdfc", "itc": too short alone
+    if (!shared.contains(p)) {
+      prefix = p;
+      break;
+    }
+  }
   final terms = <String>{
-    if (words.length >= 2) words.take(2).join(' '),
-    if (words.isNotEmpty && words.first.length >= 5) words.first,
-    if (symbol != null && symbol.length >= 4) symbol.toLowerCase(),
+    ?prefix,
+    if (prefix == null && words.isNotEmpty) words.join(' '),
+    if (symbol != null && symbol.length >= 4 && !shared.contains(symbol.toLowerCase())) symbol.toLowerCase(),
     for (final a in aliases.split(',')) if (normTitle(a).length >= 3 && a.toLowerCase() != 'benchmark') normTitle(a),
   };
   return terms.toList();

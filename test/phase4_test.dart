@@ -49,6 +49,25 @@ void main() {
       expect(mentions('HDFC Bank Q2 results', hdfc), isTrue);
       expect(mentions('HDFC Life premium growth', hdfc), isFalse);
     });
+    test('names shared by listed companies need the distinguishing word', () {
+      final shared = sharedPrefixes([
+        'Anand Rathi Wealth Limited', 'Anand Rathi Share and Stock Brokers Limited',
+        'Reliance Industries Limited', 'Reliance Power Limited', 'Infosys Limited', 'Tata Consultancy Services Limited',
+        'Tata Power Company Limited',
+      ]);
+      expect(shared, containsAll(['anand', 'anand rathi', 'reliance', 'tata']));
+      expect(shared.contains('infosys'), isFalse);
+      final ar = matchTerms('Anand Rathi Wealth Limited', 'ANANDRATHI', '', shared: shared);
+      expect(mentions('Anand Rathi Share and Stock Brokers shares drop 6% after Q2 results', ar), isFalse);
+      expect(mentions('Anand Rathi Wealth Q2 profit up 30%', ar), isTrue);
+      final ril = matchTerms('Reliance Industries Limited', 'RELIANCE', '', shared: shared);
+      expect(mentions('Reliance Power shares hit upper circuit', ril), isFalse);
+      expect(mentions('Reliance Industries Q2 beats estimates', ril), isTrue);
+      final tcs = matchTerms('Tata Consultancy Services Ltd.', 'TCS', '', shared: shared);
+      expect(mentions('Tata Power signs PPA', tcs), isFalse);
+      expect(mentions('Tata Consultancy bags deal', tcs), isTrue);
+      expect(mentions('Infosys shares rise', matchTerms('Infosys Limited', 'INFY', '', shared: shared)), isTrue);
+    });
   });
 
   group('Groq output validation', () {
