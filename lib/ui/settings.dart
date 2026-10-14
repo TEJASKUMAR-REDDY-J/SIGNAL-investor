@@ -323,6 +323,7 @@ class _NewsCard extends StatefulWidget {
 
 class _NewsCardState extends State<_NewsCard> {
   bool _on = true, _busy = false;
+  String? _last;
 
   @override
   void initState() {
@@ -330,12 +331,24 @@ class _NewsCardState extends State<_NewsCard> {
     storage.read(key: digestOnKey).then((v) {
       if (mounted) setState(() => _on = v != '0');
     });
+    _loadLast();
+  }
+
+  Future<void> _loadLast() async {
+    final v = await storage.read(key: lastCheckKey);
+    if (v == null || !mounted) return;
+    final i = v.indexOf('|');
+    final at = DateTime.tryParse(v.substring(0, i));
+    final line = v.substring(i + 1);
+    setState(() => _last = 'Last check ${at == null ? '' : '${prettyDay(at.toLocal())}, ${TimeOfDay.fromDateTime(at.toLocal()).format(context)}'}: '
+        '${line.isEmpty ? 'nothing new labelled.' : line}');
   }
 
   Future<void> _runNow() async {
     setState(() => _busy = true);
     try {
-      final line = await runDaily();
+      final line = await runDaily(manual: true);
+      await _loadLast();
       if (mounted) snack(context, line ?? 'Checked. Nothing new labelled for the companies you follow.');
     } catch (e) {
       if (mounted) snack(context, 'Could not check the news: $e');
@@ -364,7 +377,7 @@ class _NewsCardState extends State<_NewsCard> {
                 ? const SizedBox(width: 24, height: 24, child: CircularProgressIndicator(strokeWidth: 2.5))
                 : const Icon(Icons.newspaper_outlined),
             title: const Text('Check the news now'),
-            subtitle: const Text('Runs the same job immediately (about a minute)'),
+            subtitle: Text(_last ?? 'Runs the same job now (about a minute)'),
             onTap: _busy ? null : _runNow,
           ),
         ]),

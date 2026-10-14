@@ -23,6 +23,7 @@ import 'scan.dart';
 const trackedKey = 'tracked_ids'; // JSON list of instrument ids, written by the app
 const digestOnKey = 'digest_on'; // '0' turns the notification off
 const _lastDigestKey = 'last_digest_at';
+const lastCheckKey = 'last_news_check'; // "<ISO time>|<digest or empty>" for Settings
 const _task = 'signal-daily';
 const digestHoursIst = [8, 16];
 
@@ -88,7 +89,8 @@ Future<bool> requestNotificationPermission() async {
 }
 
 /// The job itself; returns the digest text (null when there was nothing new).
-Future<String?> runDaily({DateTime? nowUtc, MarketDb? market, Net? net}) async {
+/// [manual] (Settings button) summarises the last 24 hours instead of "since the last digest".
+Future<String?> runDaily({DateTime? nowUtc, MarketDb? market, Net? net, bool manual = false}) async {
   final now = (nowUtc ?? DateTime.now()).toUtc();
   final m = market ?? await openMarket();
   final n = net ?? Net();
@@ -103,13 +105,16 @@ Future<String?> runDaily({DateTime? nowUtc, MarketDb? market, Net? net}) async {
       await runScan(m, n, onProgress: (_, _, _) {}, cancel: CancelToken(), limit: 40, nowUtc: now);
     } catch (_) {}
 
-    final since = DateTime.tryParse(await storage.read(key: _lastDigestKey) ?? '') ?? now.subtract(const Duration(hours: 12));
+    final since = manual
+        ? now.subtract(const Duration(hours: 24))
+        : DateTime.tryParse(await storage.read(key: _lastDigestKey) ?? '') ?? now.subtract(const Duration(hours: 12));
     final fresh = await (m.select(m.newsItems)
           ..where((x) => x.publishedAt.isBiggerOrEqualValue(since) & x.instrumentId.isIn(tracked)))
         .get();
     final names = {for (final i in await (m.select(m.instruments)..where((x) => x.id.isIn(tracked))).get()) i.id: i.name};
     final line = digestLine(newsScores(fresh, now, window: now.difference(since)), names);
-    await storage.write(key: _lastDigestKey, value: now.toIso8601String());
+    if (!manual) await storage.write(key: _lastDigestKey, value: now.toIso8601String());
+    await storage.write(key: lastCheckKey, value: '${now.toIso8601String()}|${line ?? ''}');
     if (line != null && await storage.read(key: digestOnKey) != '0') {
       await _notes.initialize(settings: const InitializationSettings(android: AndroidInitializationSettings('ic_stat_signal')));
       final ist = now.add(const Duration(hours: 5, minutes: 30));
