@@ -2,9 +2,15 @@
 //   LIVE=1 flutter test test/live_agents_test.dart
 import 'dart:io';
 
+import 'package:drift/drift.dart' show Value;
 import 'package:drift/native.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:signal_investor/db/db.dart';
+import 'package:signal_investor/db/open_db.dart';
+import 'package:signal_investor/engine/portfolio.dart';
+import 'package:signal_investor/ui/ask.dart';
+import 'package:signal_investor/ui/widgets.dart';
 import 'package:signal_investor/pipeline/agents_run.dart';
 import 'package:signal_investor/pipeline/scan.dart';
 import 'package:signal_investor/sources/groq.dart';
@@ -35,4 +41,19 @@ void main() {
     expect(runs.any((r) => r.toolCalls > 0), isTrue);
     await m.close();
   }, skip: live ? false : 'set LIVE=1 to run against real services', timeout: const Timeout(Duration(minutes: 10)));
+
+  test('Ask studies a stock with tools', () async {
+    final env = File('.env').readAsLinesSync();
+    final key = cleanKey(env.firstWhere((l) => l.startsWith('GROQ_API_KEY=')).split('=').skip(1).join('='))!;
+    final m = MarketDb(NativeDatabase.memory());
+    await m.into(m.universe).insert(UniverseCompanion.insert(symbol: 'TCS', name: 'Tata Consultancy Services Limited', industry: const Value('IT'), nifty500: const Value(true)));
+    final s = Session(const Profile('p', 'P'), ProfileDb(NativeDatabase.memory()), m, ValueNotifier<Portfolio?>(null), () {});
+    final net = Net(timeout: const Duration(seconds: 30));
+    final a = await askWithTools(net, key, 'openai/gpt-oss-120b', 'How does TCS look on the chart right now, and how is the business doing? Also how has Parag Parikh Flexi Cap done?',
+        askToolRunner(s, net));
+    stdout.writeln('LOOKUPS ${a.searches}');
+    stdout.writeln(a.text);
+    expect(a.searches, greaterThan(0));
+    expect(a.text, isNotEmpty);
+  }, skip: live ? false : 'set LIVE=1 to run against real services', timeout: const Timeout(Duration(minutes: 5)));
 }

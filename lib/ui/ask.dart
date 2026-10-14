@@ -1,3 +1,6 @@
+import 'dart:convert';
+
+import 'package:drift/drift.dart' show OrderingTerm;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
@@ -5,7 +8,15 @@ import '../db/open_db.dart';
 import '../engine/calendar.dart';
 import '../engine/lots.dart';
 import '../engine/money.dart';
+import '../db/db.dart';
+import '../engine/agents.dart';
+import '../engine/fund_rank.dart';
+import '../engine/indicators.dart';
+import '../pipeline/agents_run.dart';
+import '../pipeline/instruments.dart';
 import '../sources/groq.dart';
+import '../sources/mfapi.dart';
+import '../sources/yahoo.dart';
 import '../sources/net.dart';
 import 'widgets.dart';
 
@@ -78,6 +89,66 @@ List<String> portfolioFacts(Session s) {
   return out;
 }
 
+/// Local data tools for Ask: chart indicators, fundamentals, news, fund returns, the agents.
+ToolRunner askToolRunner(Session s, Net net) {
+  final m = s.market;
+  String j(Object? o) => jsonEncode(o);
+  Future<Listing?> listing(Object? sym) async => sym is String
+      ? (m.select(m.universe)..where((u) => u.symbol.equals(sym.toUpperCase().trim()))).getSingleOrNull()
+      : null;
+  return (name, args) async {
+    switch (name) {
+      case 'get_technicals':
+        final l = await listing(args['symbol']);
+        if (l == null) return 'unknown NSE symbol';
+        final h = await yahooSparkHistory(net, ['${l.symbol}.NS', '^NSEI'], range: '1y');
+        final c = h['${l.symbol}.NS'];
+        if (c == null) return 'no price data';
+        final idx = h['^NSEI']?.$2;
+        return j({'name': l.name, ...Technicals.of([for (final x in c.$2) x / 10000], index: idx == null ? null : [for (final x in idx) x / 10000]).toJson()});
+      case 'get_fundamentals':
+        final l = await listing(args['symbol']);
+        if (l == null) return 'unknown NSE symbol';
+        final f = await stockFundamentals(m, net, l.symbol);
+        final ideas = s.stockIdeas.value ?? const [];
+        final rank = ideas.indexWhere((c) => c.input.symbol == l.symbol);
+        return j({'name': l.name, 'industry': l.industry, ...?f, 'advisor_rank': rank < 0 ? 'not in the top ideas' : rank + 1});
+      case 'get_news':
+        final l = await listing(args['symbol']);
+        if (l == null) return 'unknown NSE symbol';
+        final inst = await (m.select(m.instruments)..where((i) => i.nseSymbol.equals(l.symbol))).getSingleOrNull();
+        if (inst == null) return 'no news tracked for it yet';
+        final news = await (m.select(m.newsItems)
+              ..where((x) => x.instrumentId.equals(inst.id))
+              ..orderBy([(x) => OrderingTerm.desc(x.publishedAt)])
+              ..limit(8))
+            .get();
+        return j([for (final x in news) {'title': x.title, 'publisher': x.publisher, 'date': fmtDay(x.publishedAt.toUtc()), 'label': x.label, 'why': x.reason}]);
+      case 'get_fund':
+        final hits = await mfSearch(net, '${args['name'] ?? ''}');
+        if (hits.isEmpty) return 'no fund found';
+        final (code, fname) = hits.firstWhere((h) => !isRegularPlan(h.$2), orElse: () => hits.first);
+        final now = DateTime.now().toUtc();
+        final navs = await mfNavsBetween(net, code, DateTime.utc(now.year - 5, now.month, now.day), now);
+        final mt = fundMetrics(code, fname, '', navs.navs);
+        return mt == null ? 'not enough history' : j({'fund': fname, 'scheme_code': code, ...mt.toJson()});
+      case 'get_agents':
+        final trades = await m.select(m.agentTrades).get();
+        final runs = await (m.select(m.agentRuns)..orderBy([(r) => OrderingTerm.desc(r.id)])..limit(9)).get();
+        final sym = {for (final i in await m.select(m.instruments).get()) i.id: i.nseSymbol ?? i.name};
+        return j({
+          for (final k in AgentKind.values)
+            k.name: {
+              'holdings': [for (final p in bookFor(trades, k).positions.values) sym[p.instrumentId]],
+              'cash_rupees': bookFor(trades, k).cashPaise ~/ 100,
+              'latest_decisions': [for (final r in runs) if (r.agent == k.name) '${r.date}: ${r.summary}'],
+            },
+        });
+    }
+    return 'unknown tool';
+  };
+}
+
 /// Ask anything: how to use the app, your portfolio, a company, tax. Explains; never decides.
 class AskScreen extends StatefulWidget {
   final Session session;
@@ -96,6 +167,8 @@ class _AskScreenState extends State<AskScreen> {
   final _net = Net();
 
   static const _starters = [
+    'Study Tata Motors: chart, business and news. Is it in good shape?',
+    'How are the three agents doing, and why did they make their last trades?',
     'How is my portfolio doing, and what should I keep an eye on?',
     'Which of the Advisor\'s top ideas is growing fastest, and why?',
     'I am new. How do I record a stock I bought?',
@@ -137,13 +210,14 @@ class _AskScreenState extends State<AskScreen> {
     });
     _toBottom();
     try {
-      final a = await ask(_net, key, model, text,
-          webSearch: _web,
-          history: history,
-          context: [if (_mine) ...portfolioFacts(widget.session), ...widget.extraContext]);
-      if (mounted) {
-        setState(() => _chat.add((false, '${a.text}${a.searches > 0 ? '\n\n(${a.searches} web search${a.searches == 1 ? '' : 'es'})' : ''}')));
-      }
+      final ctx = [if (_mine) ...portfolioFacts(widget.session), ...widget.extraContext];
+      // Web search and function tools don't mix on Groq: web questions use browser search,
+      // everything else can look up any stock, fund or the agents.
+      final a = _web
+          ? await ask(_net, key, model, text, webSearch: true, history: history, context: ctx)
+          : await askWithTools(_net, key, model, text, askToolRunner(widget.session, _net), history: history, context: ctx);
+      final note = a.searches == 0 ? '' : (_web ? '${a.searches} web search${a.searches == 1 ? '' : 'es'}' : '${a.searches} data look-up${a.searches == 1 ? '' : 's'}');
+      if (mounted) setState(() => _chat.add((false, '${a.text}${note.isEmpty ? '' : '\n\n($note)'}')));
     } catch (e) {
       if (mounted) setState(() => _chat.add((false, 'Could not get an answer: ${e.toString().replaceFirst('groq: ', '')}')));
     } finally {

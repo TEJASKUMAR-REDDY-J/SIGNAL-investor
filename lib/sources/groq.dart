@@ -484,3 +484,82 @@ Future<List<String>> agentReflect(Net n, String key, String model, String agentN
   final l = j is Map && j['lessons'] is List ? j['lessons'] as List : const [];
   return [for (final x in l.take(3)) if (x is String && x.trim().isNotEmpty) plainText(x).trim()];
 }
+
+// ---- Ask with tools: the assistant looks things up itself ----
+
+final askTools = [
+  _fn('get_technicals', 'Chart indicators for any NSE stock: trend, RSI, MACD, Bollinger, 50/200-day averages, returns, volatility, 52-week position, strength vs NIFTY.',
+      {'symbol': _sym}, ['symbol']),
+  _fn('get_fundamentals', 'Business numbers for any NSE stock: ROE, debt, margins, growth, P/E, size, Advisor rank.', {'symbol': _sym}, ['symbol']),
+  _fn('get_news', 'Recent AI-labelled headlines and NSE filings for a stock.', {'symbol': _sym}, ['symbol']),
+  _fn('get_fund', 'A mutual fund\'s 1/3/5-year growth and worst fall, found by name.', {
+    'name': {'type': 'string', 'description': 'Fund name, e.g. Parag Parikh Flexi Cap Direct Growth'}
+  }, ['name']),
+  _fn('get_agents', 'The three paper agents: value, holdings and their latest decisions with reasons.', {}),
+];
+
+/// Answers with tool use (no web search). Falls back to whatever text the model gives.
+Future<Answer> askWithTools(Net n, String key, String model, String question, ToolRunner run,
+    {List<String> context = const [], List<(bool, String)> history = const [], Future<void> Function(Duration) sleep = Future.delayed}) async {
+  final messages = <Map<String, Object?>>[
+    {
+      'role': 'system',
+      'content': '$_askSystem You can call tools to study any NSE stock (chart indicators, fundamentals, news), any mutual '
+          'fund\'s returns, and the paper agents. Use them for questions about specific stocks or funds, then explain '
+          'what the numbers mean in plain words.'
+    },
+    if (context.isNotEmpty) {'role': 'user', 'content': 'Data from the app (my portfolio and market data):\n${context.join('\n')}'},
+    for (final (me, text) in history.length > 8 ? history.sublist(history.length - 8) : history)
+      {'role': me ? 'user' : 'assistant', 'content': text},
+    {'role': 'user', 'content': question},
+  ];
+  var calls = 0;
+  var waited = Duration.zero;
+  for (var round = 0; round < 6; round++) {
+    final last = round == 5;
+    if (n.blocked('groq')) throw FetchError('groq', 'rate-limited, backing off');
+    final res = await n.client
+        .post(Uri.parse('https://api.groq.com/openai/v1/chat/completions'),
+            headers: {'Authorization': 'Bearer $key', 'Content-Type': 'application/json'},
+            body: jsonEncode({
+              'model': model,
+              'reasoning_effort': 'low',
+              'max_completion_tokens': 2500,
+              'messages': messages,
+              if (!last) 'tools': askTools,
+            }))
+        .timeout(const Duration(seconds: 90));
+    if (res.statusCode == 429) {
+      final wait = Duration(seconds: (double.tryParse(res.headers['retry-after'] ?? '') ?? 10).ceil().clamp(1, 30));
+      if (waited + wait > const Duration(seconds: 60)) throw FetchError('groq', 'rate limit (free tier), try again in a minute');
+      waited += wait;
+      await sleep(wait);
+      round--;
+      continue;
+    }
+    if (res.statusCode == 401) throw FetchError('groq', 'invalid API key');
+    if (res.statusCode != 200) throw FetchError('groq', 'HTTP ${res.statusCode}');
+    final msg = (((jsonDecode(utf8.decode(res.bodyBytes)) as Map)['choices'] as List).first as Map)['message'] as Map;
+    final tcs = (msg['tool_calls'] as List?) ?? const [];
+    if (tcs.isEmpty) return Answer(plainText((msg['content'] as String?) ?? ''), calls);
+    messages.add({'role': 'assistant', 'content': msg['content'] ?? '', 'tool_calls': tcs});
+    for (final tc in tcs.cast<Map>()) {
+      final f = tc['function'] as Map;
+      Map<String, dynamic> args;
+      try {
+        args = (jsonDecode((f['arguments'] as String?) ?? '{}') as Map).cast<String, dynamic>();
+      } catch (_) {
+        args = {};
+      }
+      calls++;
+      String out;
+      try {
+        out = await run(f['name'] as String, args);
+      } catch (e) {
+        out = 'error: $e';
+      }
+      messages.add({'role': 'tool', 'tool_call_id': tc['id'], 'content': out.length > 6000 ? out.substring(0, 6000) : out});
+    }
+  }
+  return const Answer('I could not finish looking that up. Try a narrower question.', 0);
+}
