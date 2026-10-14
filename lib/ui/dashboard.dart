@@ -366,13 +366,18 @@ class _DashboardState extends State<Dashboard> {
                 ),
               ]),
               const SizedBox(height: 8),
-              Text(
-                'In the ${(p.book.series(p.indexId!).length / 250).toStringAsFixed(0)} years of index history on this phone, '
-                'there were ${f.similarFalls} one-day falls at least this deep. '
-                '${f.medianRecoveryDays == null ? '' : 'Half of them were back to the prior close within ${f.medianRecoveryDays} trading days. '}'
-                '${f.unrecovered > 0 ? '${f.unrecovered} have not recovered yet.' : ''}',
-                style: TextStyle(color: cs.onSurfaceVariant, height: 1.4),
-              ),
+              Builder(builder: (context) {
+                final s = p.book.series(p.indexId!);
+                final years = (s.last.day.difference(s.first.day).inDays / 365.25).round();
+                final text = f.similarFalls == 0
+                    ? 'This is the deepest one-day fall in the $years years of index history on this phone. '
+                        'Big days stand out because they are rare.'
+                    : 'In the $years years of index history on this phone there were ${f.similarFalls} one-day falls '
+                        'at least this deep. '
+                        '${f.medianRecoveryDays == null ? '' : 'Half of them were back to the prior close within ${f.medianRecoveryDays} trading days. '}'
+                        '${f.unrecovered > 0 ? '${f.unrecovered} have not recovered yet.' : ''}';
+                return Text(text, style: TextStyle(color: cs.onSurfaceVariant, height: 1.4));
+              }),
               const Fine('Past recoveries are history, not a promise.'),
             ]),
           ),

@@ -237,12 +237,17 @@ IconData txIcon(String type) => switch (type) {
       _ => Icons.circle,
     };
 
+/// Per-unit price: "₹3,350.00", or "₹45.6789" when it has more than 2 decimals.
+String priceLabel(int price4) => price4 % 100 == 0
+    ? rupees(price4 ~/ 100)
+    : '₹${formatScaled(price4, 4, minDecimals: 2)}';
+
 /// "₹1,234" for buys/sells, "1 → 5" for splits, "1:1" bonus.
 String txSummary(Transaction t) => switch (t.type) {
       'dividend' => rupees(valuePaise(unitScale, t.priceE4)),
       'split' => '1 → ${formatScaled(t.unitsE4, 4)}',
       'bonus' => '${formatScaled(t.unitsE4, 4)} : 1',
-      _ => '${formatScaled(t.unitsE4, 4)} @ ₹${formatScaled(t.priceE4, 4, minDecimals: 2)}',
+      _ => '${formatScaled(t.unitsE4, 4)} @ ${priceLabel(t.priceE4)}',
     };
 
 const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];

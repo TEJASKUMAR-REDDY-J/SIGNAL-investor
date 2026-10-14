@@ -9,12 +9,12 @@ class SimResult {
   final int valuePaise;
   final double? xirr;
   final List<(DateTime, int, int)> path; // month, value, invested
-  final int worstDropBps; // deepest fall from a prior peak along the way
+  final int worstDropBps; // the fund's deepest fall from a prior peak over the period
   const SimResult(this.investedPaise, this.valuePaise, this.xirr, this.path, this.worstDropBps);
 }
 
 SimResult _run(List<Bar> nav, List<(DateTime, int)> buys) {
-  var units = 0, invested = 0, peak = 0, worst = 0;
+  var units = 0, invested = 0, peak = 0, worst = 0; // peak/worst track the price itself
   final flows = <Flow>[];
   final path = <(DateTime, int, int)>[];
   var bi = 0;
@@ -27,11 +27,9 @@ SimResult _run(List<Bar> nav, List<(DateTime, int)> buys) {
       bi++;
     }
     final v = valuePaise(units, b.closeE4);
-    if (v > peak) peak = v;
-    if (peak > 0) {
-      final dd = ((peak - v) * 10000 / peak).round();
-      if (dd > worst) worst = dd;
-    }
+    if (b.closeE4 > peak) peak = b.closeE4;
+    final dd = ((peak - b.closeE4) * 10000 / peak).round();
+    if (dd > worst) worst = dd;
     final last = i == nav.length - 1;
     if (last || nav[i + 1].day.month != b.day.month) path.add((DateTime.utc(b.day.year, b.day.month), v, invested));
   }

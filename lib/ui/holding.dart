@@ -168,12 +168,13 @@ class HoldingScreen extends StatelessWidget {
             Padding(
               padding: const EdgeInsets.only(top: 4),
               child: Wrap(spacing: 8, crossAxisAlignment: WrapCrossAlignment.center, children: [
-                Text('₹${formatScaled(h!.price!.closeE4, 4, minDecimals: 2)} on ${prettyDay(h.price!.day)}',
+                Text('${priceLabel(h!.price!.closeE4)} on ${prettyDay(h.price!.day)}',
                     style: const TextStyle(fontWeight: FontWeight.w600, fontFeatures: tabular)),
                 if (cc != null)
                   Pill(
-                    cc.$3 > mismatchBps ? 'NSE check ${(cc.$3 / 100).toStringAsFixed(2)}% off' : 'NSE check ✓',
+                    cc.$3 > mismatchBps ? 'NSE check ${(cc.$3 / 100).toStringAsFixed(2)}% off' : 'NSE check',
                     color: cc.$3 > mismatchBps ? cs.loss : cs.gain,
+                    icon: cc.$3 > mismatchBps ? Icons.compare_arrows : Icons.verified_outlined,
                   ),
                 if (h.stale) Pill('stale', color: cs.warn, icon: Icons.history),
               ]),

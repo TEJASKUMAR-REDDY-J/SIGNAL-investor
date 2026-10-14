@@ -175,7 +175,7 @@ class SandboxScreen extends StatelessWidget {
     await session.db.addPaperTrade(PaperTradesCompanion.insert(
         instrumentId: id!, date: fmtDay(istToday()), type: 'buy', unitsE4: unitsFor(amt, price.closeE4), priceE4: price.closeE4,
         reason: Value(reason.text.trim())));
-    if (context.mounted) snack(context, 'Bought on paper at ₹${formatScaled(price.closeE4, 4, minDecimals: 2)} (${prettyDay(price.day)})');
+    if (context.mounted) snack(context, 'Bought on paper at ${priceLabel(price.closeE4)} (${prettyDay(price.day)})');
   }
 
   /// Latest known close; fetch one if this instrument has none yet.

@@ -332,7 +332,7 @@ class _TimeMachineScreenState extends State<TimeMachineScreen> {
                   Notice(
                     icon: Icons.self_improvement,
                     color: cs.primary,
-                    text: 'Along the way the SIP fell as much as ${(sip.worstDropBps / 100).toStringAsFixed(0)}% from a peak. '
+                    text: 'Along the way this fell as much as ${(sip.worstDropBps / 100).toStringAsFixed(0)}% from a peak. '
                         'Staying in through that is the hard part, and where most of the return came from.',
                   ),
                   const SizedBox(height: 10),
