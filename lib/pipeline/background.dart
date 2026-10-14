@@ -10,6 +10,7 @@ import '../db/open_db.dart';
 import '../engine/news_score.dart';
 import '../sources/groq.dart';
 import '../sources/net.dart';
+import 'agents_run.dart';
 import 'feeds.dart';
 import 'refresh.dart';
 import 'scan.dart';
@@ -25,7 +26,7 @@ const digestOnKey = 'digest_on'; // '0' turns the notification off
 const _lastDigestKey = 'last_digest_at';
 const lastCheckKey = 'last_news_check'; // "<ISO time>|<digest or empty>" for Settings
 const _task = 'signal-daily';
-const digestHoursIst = [8, 16];
+const digestHoursIst = [8, 11, 16]; // 11:00: the paper agents trade (16:00 catches up if missed)
 
 /// Next 08:00 or 16:00 IST strictly after [nowUtc].
 DateTime nextSlotUtc(DateTime nowUtc) {
@@ -80,6 +81,21 @@ void backgroundDispatcher() {
 
 final _notes = FlutterLocalNotificationsPlugin();
 
+/// Posts one notification; never throws (no permission, no platform, ...).
+Future<void> _notify(int id, String channel, String channelName, String title, String body) async {
+  try {
+    await _notes.initialize(settings: const InitializationSettings(android: AndroidInitializationSettings('ic_stat_signal')));
+    await _notes.show(
+      id: id,
+      title: title,
+      body: body,
+      notificationDetails: NotificationDetails(
+        android: AndroidNotificationDetails(channel, channelName, styleInformation: BigTextStyleInformation(body)),
+      ),
+    );
+  } catch (_) {}
+}
+
 Future<bool> requestNotificationPermission() async {
   await _notes.initialize(settings: const InitializationSettings(android: AndroidInitializationSettings('ic_stat_signal')));
   return await _notes
@@ -118,18 +134,14 @@ Future<String?> runDaily({DateTime? nowUtc, MarketDb? market, Net? net, bool man
     if (!manual) await storage.write(key: _lastDigestKey, value: now.toIso8601String());
     await storage.write(key: lastCheckKey, value: '${now.toIso8601String()}|${line ?? ''}');
     if (line != null && await storage.read(key: digestOnKey) != '0') {
-      await _notes.initialize(settings: const InitializationSettings(android: AndroidInitializationSettings('ic_stat_signal')));
       final ist = now.add(const Duration(hours: 5, minutes: 30));
-      await _notes.show(
-        id: 1,
-        title: ist.hour < 12 ? 'Morning news pulse' : 'Evening news pulse',
-        body: line,
-        notificationDetails: NotificationDetails(
-          android: AndroidNotificationDetails('news_pulse', 'Daily news pulse',
-              channelDescription: 'Twice a day: what the news says about companies you hold or follow',
-              styleInformation: BigTextStyleInformation(line)),
-        ),
-      );
+      await _notify(1, 'news_pulse', 'Daily news pulse', ist.hour < 12 ? 'Morning news pulse' : 'Evening news pulse', line);
+    }
+    if (!manual) {
+      final agentLines = await runAgents(m, n, groqKey: key, nowUtc: now).catchError((_) => const <String>[]);
+      if (agentLines.isNotEmpty && await storage.read(key: digestOnKey) != '0') {
+        await _notify(2, 'agents', 'Paper agents', 'Paper agents traded', agentLines.join(String.fromCharCode(10)));
+      }
     }
     return line;
   } finally {

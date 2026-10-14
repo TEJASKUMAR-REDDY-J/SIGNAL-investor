@@ -96,11 +96,50 @@ class Fundamentals extends Table {
   Set<Column> get primaryKey => {symbol};
 }
 
-@DriftDatabase(tables: [Instruments, Prices, NewsItems, Filings, FetchLog, Holidays, Universe, Fundamentals])
+// ---- Autonomous paper agents (public-market simulation; lives here so the
+// background job can trade without opening the personal profile database) ----
+
+/// Every paper order an agent placed, with its reason.
+class AgentTrades extends Table {
+  IntColumn get id => integer().autoIncrement()();
+  TextColumn get agent => text()(); // daily | weekly | monthly
+  IntColumn get instrumentId => integer()();
+  TextColumn get date => text()(); // IST trading day
+  DateTimeColumn get at => dateTime()();
+  TextColumn get side => text()(); // buy | sell
+  IntColumn get unitsE4 => integer()();
+  IntColumn get priceE4 => integer()();
+  IntColumn get feesPaise => integer().withDefault(const Constant(0))();
+  TextColumn get reason => text().withDefault(const Constant(''))();
+}
+
+/// One row per agent per run: what it concluded and where it stood after.
+class AgentRuns extends Table {
+  IntColumn get id => integer().autoIncrement()();
+  TextColumn get agent => text()();
+  TextColumn get date => text()();
+  DateTimeColumn get at => dateTime()();
+  TextColumn get summary => text()();
+  IntColumn get valuePaise => integer()(); // cash + holdings after the run
+  IntColumn get cashPaise => integer()();
+  BoolColumn get ai => boolean().withDefault(const Constant(false))(); // AI reviewed the plan
+}
+
+/// What the user tells the agents; every run reads these.
+class AgentNotes extends Table {
+  IntColumn get id => integer().autoIncrement()();
+  DateTimeColumn get at => dateTime()();
+  TextColumn get body => text()();
+  TextColumn get agent => text().nullable()(); // null = all agents
+}
+
+@DriftDatabase(tables: [
+  Instruments, Prices, NewsItems, Filings, FetchLog, Holidays, Universe, Fundamentals, AgentTrades, AgentRuns, AgentNotes
+])
 class MarketDb extends _$MarketDb {
   MarketDb(super.e);
   @override
-  int get schemaVersion => 2;
+  int get schemaVersion => 3;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -109,6 +148,11 @@ class MarketDb extends _$MarketDb {
             await m.createTable(holidays);
             await m.createTable(universe);
             await m.createTable(fundamentals);
+          }
+          if (from < 3) {
+            await m.createTable(agentTrades);
+            await m.createTable(agentRuns);
+            await m.createTable(agentNotes);
           }
         },
       );

@@ -7,6 +7,7 @@ import '../sources/groq.dart';
 import '../sources/net.dart';
 import '../sources/nse.dart';
 import '../sources/rss.dart';
+import 'instruments.dart';
 import 'refresh.dart';
 
 typedef HeldIds = Set<int> Function();
@@ -54,7 +55,9 @@ Step newsStep(MarketDb m, Net net, HeldIds held, GroqConfig groq) => (now, force
       final st = await m.fetchState('news');
       if (!force && !feedStale(st?.lastAttemptAt?.toUtc(), now)) return null;
       final inst = await (m.select(m.instruments)..where((i) => i.id.isIn(held()) & i.kind.equals('stock'))).get();
-      if (inst.isEmpty) return null;
+      // The paper agents watch every NIFTY 500 company, so news is matched against all of them.
+      final listings = await (m.select(m.universe)..where((u) => u.nifty500.equals(true))).get();
+      if (inst.isEmpty && listings.isEmpty) return null;
       final heads = <Headline>[];
       var fails = 0;
       await Future.wait([
@@ -76,10 +79,19 @@ Step newsStep(MarketDb m, Net net, HeldIds held, GroqConfig groq) => (now, force
         }
       }
       final seenTitles = {for (final n in recent) normTitle(n.title)};
+      final heldSymbols = {for (final i in inst) i.nseSymbol};
+      final lterms = {
+        for (final l in listings)
+          if (!heldSymbols.contains(l.symbol)) l: matchTerms(l.name, l.symbol, '', shared: shared),
+      };
       var added = 0;
       for (final h in heads) {
         if (h.publishedUtc.isBefore(cutoff)) continue;
-        final id = terms.entries.where((e) => mentions(h.title, e.value)).firstOrNull?.key;
+        var id = terms.entries.where((e) => mentions(h.title, e.value)).firstOrNull?.key;
+        if (id == null) {
+          final l = lterms.entries.where((e) => mentions(h.title, e.value)).firstOrNull?.key;
+          if (l != null) id = await ensureStock(m, l.symbol, l.name);
+        }
         if (id == null) continue;
         final t = normTitle(h.title);
         if (seenTitles.contains(t)) continue;
@@ -90,17 +102,22 @@ Step newsStep(MarketDb m, Net net, HeldIds held, GroqConfig groq) => (now, force
             mode: InsertMode.insertOrIgnore);
         if (inserted > 0) added++;
       }
-      // Tag untagged held-company headlines (max 40 per refresh).
+      // Tag untagged headlines, newest first (max 40 per refresh): yours first, then the rest of NIFTY 500.
       var tagged = 0;
       String? tagErr;
       final cfg = await groq();
       if (cfg != null) {
-        final untagged = await (m.select(m.newsItems)
-              ..where((n) => n.label.isNull() & n.instrumentId.isIn(held()) & n.publishedAt.isBiggerOrEqualValue(cutoff))
-              ..orderBy([(n) => OrderingTerm.desc(n.publishedAt)])
-              ..limit(maxTagsPerRefresh))
+        final pending = await (m.select(m.newsItems)
+              ..where((n) => n.label.isNull() & n.instrumentId.isNotNull() & n.publishedAt.isBiggerOrEqualValue(cutoff))
+              ..orderBy([(n) => OrderingTerm.desc(n.publishedAt)]))
             .get();
-        final names = {for (final i in inst) i.id: i.name};
+        final mine = held();
+        pending.sort((a, b) => (mine.contains(b.instrumentId) ? 1 : 0).compareTo(mine.contains(a.instrumentId) ? 1 : 0));
+        final untagged = pending.take(maxTagsPerRefresh).toList();
+        final names = {
+          for (final i in await (m.select(m.instruments)..where((i) => i.id.isIn({for (final n in untagged) n.instrumentId!}))).get())
+            i.id: i.name,
+        };
         try {
           final tags = await tagHeadlines(net, cfg.$1, cfg.$2, [
             for (final n in untagged) TagInput(n.url, n.title, n.publisher, n.publishedAt.toUtc(), names[n.instrumentId] ?? ''),

@@ -166,7 +166,7 @@ void main() {
     await t.pumpWidget(app(LockScreen(onUnlock: () async => null), b));
     await shot(t, '01_lock_$tag');
 
-    await t.pumpWidget(app(Shell(session: session), b));
+    await t.pumpWidget(app(Shell(session: session, initialTab: 1), b));
     await shot(t, '02_home_$tag', n: 60);
     await t.drag(find.byType(CustomScrollView).first, const Offset(0, -1100));
     await shot(t, '03_home_scrolled_$tag');

@@ -73,7 +73,7 @@ Future<void> _refreshOne(MarketDb m, Net net, YahooSession yahoo, Listing u, Map
 
 /// Stock ideas from the cache alone: no network. Decoding ~500 cached entries
 /// (with 3 years of prices each) runs on a background isolate to keep the UI smooth.
-Future<List<Candidate>> stockIdeas(MarketDb m, {Set<String> exclude = const {}, DateTime? nowUtc}) async {
+Future<List<Candidate>> stockIdeas(MarketDb m, {Set<String> exclude = const {}, DateTime? nowUtc, int n = topN}) async {
   final now = (nowUtc ?? DateTime.now()).toUtc();
   final members = {for (final u in await (m.select(m.universe)..where((u) => u.nifty500.equals(true))).get()) u.symbol: u};
   final rows = [
@@ -82,7 +82,7 @@ Future<List<Candidate>> stockIdeas(MarketDb m, {Set<String> exclude = const {}, 
   ];
   return Isolate.run(() => rankUniverse([
         for (final (u, json) in rows) _input(u, (jsonDecode(json) as Map).cast<String, dynamic>(), now),
-      ], exclude: exclude));
+      ], exclude: exclude, n: n));
 }
 
 /// Full NIFTY 500 refresh: two requests in flight with a pause each, cached

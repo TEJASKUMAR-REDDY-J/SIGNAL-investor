@@ -24,7 +24,9 @@ import 'ask.dart';
 import 'lab.dart';
 import 'sandbox.dart';
 import '../sources/net.dart';
-import 'activity.dart';
+import '../engine/agents.dart';
+import '../pipeline/agents_run.dart';
+import 'agents.dart';
 import 'add_transaction.dart';
 import 'dashboard.dart';
 import 'guide.dart';
@@ -36,13 +38,15 @@ import 'widgets.dart';
 /// [Portfolio] per change, shared by all tabs (no per-screen FIFO work).
 class Shell extends StatefulWidget {
   final Session session;
-  const Shell({super.key, required this.session});
+  final int initialTab;
+  const Shell({super.key, required this.session, this.initialTab = 0});
   @override
   State<Shell> createState() => _ShellState();
 }
 
 class _ShellState extends State<Shell> with WidgetsBindingObserver {
-  int _tab = 0;
+  late int _tab = widget.initialTab;
+  Set<int> _agentHeld = const {};
   List<Price> _prices = const [];
   Timer? _debounce;
   bool _refreshedOnce = false;
@@ -63,7 +67,7 @@ class _ShellState extends State<Shell> with WidgetsBindingObserver {
   Set<int> _heldReal() => {for (final h in s.portfolio.value?.holdings ?? const <Holding>[]) h.instrumentId};
 
   /// Holdings, sandbox positions and the watchlist: prices kept fresh.
-  Set<int> _held() => {..._heldReal(), ..._paper, ...s.watch.value};
+  Set<int> _held() => {..._heldReal(), ..._paper, ...s.watch.value, ..._agentHeld};
 
   /// Plus the advisor's top stock ideas: news and filings tracked for all of these.
   Set<int> _tracked() => {..._held(), ..._ideaIds};
@@ -129,12 +133,17 @@ class _ShellState extends State<Shell> with WidgetsBindingObserver {
         _scoreNews();
         _saveTracked();
       }),
+      m.select(m.agentTrades).watch().listen((v) {
+        _agentHeld = {for (final k in AgentKind.values) ...bookFor(v, k).positions.keys};
+        _saveTracked();
+      }),
       m.select(m.newsItems).watch().listen((v) {
         _newsItems = v;
         _scoreNews();
       }),
     ]);
     s.reloadIdeas = _loadIdeas;
+    s.runAgents = _runAgents;
     _loadIdeas();
     _liveTimer = Timer.periodic(const Duration(seconds: 60), (_) {
       if (_resumed && nse.status(DateTime.now()).phase == MarketPhase.open) _live();
@@ -143,6 +152,19 @@ class _ShellState extends State<Shell> with WidgetsBindingObserver {
   }
 
   bool _resumed = true;
+
+  Future<void> _runAgents() async {
+    if (s.agentStatus.value != null) return;
+    s.agentStatus.value = 'Starting the agents…';
+    try {
+      await runAgents(s.market, _net,
+          groqKey: await groqKeyFor(s.profile.id), onStatus: (x) => mounted ? s.agentStatus.value = x : null);
+    } catch (_) {
+      // Logged per agent inside; the background job retries at 4 PM.
+    } finally {
+      s.agentStatus.value = null;
+    }
+  }
 
   void _scoreNews() {
     final t = _tracked();
@@ -193,6 +215,8 @@ class _ShellState extends State<Shell> with WidgetsBindingObserver {
       await openTour(context, s);
       await storage.write(key: tourDoneKey, value: '1');
     }
+    // Agents trade once per market day; if the 11:00 background run has not happened yet, run now.
+    if (mounted && (await agentsDue(s.market, DateTime.now().toUtc())).isNotEmpty) _runAgents();
     try {
       await initBackground();
       if (await storage.read(key: 'notif_asked') == null) {
@@ -297,13 +321,13 @@ class _ShellState extends State<Shell> with WidgetsBindingObserver {
   @override
   Widget build(BuildContext context) {
     final pages = [
+      AgentsTab(session: s),
       Dashboard(session: s, onOpenTab: (i) => setState(() => _tab = i)),
       HoldingsTab(session: s),
-      ActivityTab(session: s),
       PlanTab(session: s),
       LabTab(session: s),
     ];
-    // Back: other tab -> Home; Home -> lock (closes the profile database).
+    // Back: other tab -> Agents; Agents -> lock (closes the profile database).
     return PopScope(
       canPop: false,
       onPopInvokedWithResult: (didPop, _) {
@@ -316,7 +340,7 @@ class _ShellState extends State<Shell> with WidgetsBindingObserver {
       },
       child: Scaffold(
         body: IndexedStack(index: _tab, children: pages),
-        floatingActionButton: _tab >= 3
+        floatingActionButton: _tab == 0 || _tab >= 3
             ? null
             : FloatingActionButton.extended(
                 heroTag: 'add',
@@ -328,6 +352,7 @@ class _ShellState extends State<Shell> with WidgetsBindingObserver {
           selectedIndex: _tab,
           onDestinationSelected: (i) => setState(() => _tab = i),
           destinations: const [
+            NavigationDestination(icon: Icon(Icons.smart_toy_outlined), selectedIcon: Icon(Icons.smart_toy), label: 'Agents'),
             NavigationDestination(
               icon: Icon(Icons.space_dashboard_outlined),
               selectedIcon: Icon(Icons.space_dashboard),
@@ -337,11 +362,6 @@ class _ShellState extends State<Shell> with WidgetsBindingObserver {
               icon: Icon(Icons.pie_chart_outline),
               selectedIcon: Icon(Icons.pie_chart),
               label: 'Holdings',
-            ),
-            NavigationDestination(
-              icon: Icon(Icons.receipt_long_outlined),
-              selectedIcon: Icon(Icons.receipt_long),
-              label: 'Activity',
             ),
             NavigationDestination(icon: Icon(Icons.flag_outlined), selectedIcon: Icon(Icons.flag), label: 'Plan'),
             NavigationDestination(icon: Icon(Icons.science_outlined), selectedIcon: Icon(Icons.science), label: 'Lab'),

@@ -169,15 +169,17 @@ void main() {
       expect(digestLine(s, {1: 'TCS', 2: 'Infosys'}), startsWith('1 positive, 1 negative across 2 companies. '));
     });
 
-    test('daily job slots: 08:00 and 16:00 IST', () {
+    test('daily job slots: 08:00, 11:00 and 16:00 IST', () {
       // 06:00 IST -> 08:00 IST same day (02:30 UTC)
       expect(nextSlotUtc(DateTime.utc(2026, 10, 14, 0, 30)), DateTime.utc(2026, 10, 14, 2, 30));
-      // 09:00 IST -> 16:00 IST (10:30 UTC)
-      expect(nextSlotUtc(DateTime.utc(2026, 10, 14, 3, 30)), DateTime.utc(2026, 10, 14, 10, 30));
+      // 09:00 IST -> 11:00 IST (05:30 UTC), when the agents trade
+      expect(nextSlotUtc(DateTime.utc(2026, 10, 14, 3, 30)), DateTime.utc(2026, 10, 14, 5, 30));
+      // 12:00 IST -> 16:00 IST (10:30 UTC)
+      expect(nextSlotUtc(DateTime.utc(2026, 10, 14, 6, 30)), DateTime.utc(2026, 10, 14, 10, 30));
       // 17:00 IST -> next day 08:00 IST
       expect(nextSlotUtc(DateTime.utc(2026, 10, 14, 11, 30)), DateTime.utc(2026, 10, 15, 2, 30));
       // exactly on a slot -> the next one
-      expect(nextSlotUtc(DateTime.utc(2026, 10, 14, 2, 30)), DateTime.utc(2026, 10, 14, 10, 30));
+      expect(nextSlotUtc(DateTime.utc(2026, 10, 14, 2, 30)), DateTime.utc(2026, 10, 14, 5, 30));
     });
   });
 

@@ -2992,6 +2992,1367 @@ class FundamentalsCompanion extends UpdateCompanion<Fundamental> {
   }
 }
 
+class $AgentTradesTable extends AgentTrades
+    with TableInfo<$AgentTradesTable, AgentTrade> {
+  @override
+  final GeneratedDatabase attachedDatabase;
+  final String? _alias;
+  $AgentTradesTable(this.attachedDatabase, [this._alias]);
+  static const VerificationMeta _idMeta = const VerificationMeta('id');
+  @override
+  late final GeneratedColumn<int> id = GeneratedColumn<int>(
+    'id',
+    aliasedName,
+    false,
+    hasAutoIncrement: true,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+    defaultConstraints: GeneratedColumn.constraintIsAlways(
+      'PRIMARY KEY AUTOINCREMENT',
+    ),
+  );
+  static const VerificationMeta _agentMeta = const VerificationMeta('agent');
+  @override
+  late final GeneratedColumn<String> agent = GeneratedColumn<String>(
+    'agent',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _instrumentIdMeta = const VerificationMeta(
+    'instrumentId',
+  );
+  @override
+  late final GeneratedColumn<int> instrumentId = GeneratedColumn<int>(
+    'instrument_id',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _dateMeta = const VerificationMeta('date');
+  @override
+  late final GeneratedColumn<String> date = GeneratedColumn<String>(
+    'date',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _atMeta = const VerificationMeta('at');
+  @override
+  late final GeneratedColumn<DateTime> at = GeneratedColumn<DateTime>(
+    'at',
+    aliasedName,
+    false,
+    type: DriftSqlType.dateTime,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _sideMeta = const VerificationMeta('side');
+  @override
+  late final GeneratedColumn<String> side = GeneratedColumn<String>(
+    'side',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _unitsE4Meta = const VerificationMeta(
+    'unitsE4',
+  );
+  @override
+  late final GeneratedColumn<int> unitsE4 = GeneratedColumn<int>(
+    'units_e4',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _priceE4Meta = const VerificationMeta(
+    'priceE4',
+  );
+  @override
+  late final GeneratedColumn<int> priceE4 = GeneratedColumn<int>(
+    'price_e4',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _feesPaiseMeta = const VerificationMeta(
+    'feesPaise',
+  );
+  @override
+  late final GeneratedColumn<int> feesPaise = GeneratedColumn<int>(
+    'fees_paise',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+    defaultValue: const Constant(0),
+  );
+  static const VerificationMeta _reasonMeta = const VerificationMeta('reason');
+  @override
+  late final GeneratedColumn<String> reason = GeneratedColumn<String>(
+    'reason',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+    defaultValue: const Constant(''),
+  );
+  @override
+  List<GeneratedColumn> get $columns => [
+    id,
+    agent,
+    instrumentId,
+    date,
+    at,
+    side,
+    unitsE4,
+    priceE4,
+    feesPaise,
+    reason,
+  ];
+  @override
+  String get aliasedName => _alias ?? actualTableName;
+  @override
+  String get actualTableName => $name;
+  static const String $name = 'agent_trades';
+  @override
+  VerificationContext validateIntegrity(
+    Insertable<AgentTrade> instance, {
+    bool isInserting = false,
+  }) {
+    final context = VerificationContext();
+    final data = instance.toColumns(true);
+    if (data.containsKey('id')) {
+      context.handle(_idMeta, id.isAcceptableOrUnknown(data['id']!, _idMeta));
+    }
+    if (data.containsKey('agent')) {
+      context.handle(
+        _agentMeta,
+        agent.isAcceptableOrUnknown(data['agent']!, _agentMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_agentMeta);
+    }
+    if (data.containsKey('instrument_id')) {
+      context.handle(
+        _instrumentIdMeta,
+        instrumentId.isAcceptableOrUnknown(
+          data['instrument_id']!,
+          _instrumentIdMeta,
+        ),
+      );
+    } else if (isInserting) {
+      context.missing(_instrumentIdMeta);
+    }
+    if (data.containsKey('date')) {
+      context.handle(
+        _dateMeta,
+        date.isAcceptableOrUnknown(data['date']!, _dateMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_dateMeta);
+    }
+    if (data.containsKey('at')) {
+      context.handle(_atMeta, at.isAcceptableOrUnknown(data['at']!, _atMeta));
+    } else if (isInserting) {
+      context.missing(_atMeta);
+    }
+    if (data.containsKey('side')) {
+      context.handle(
+        _sideMeta,
+        side.isAcceptableOrUnknown(data['side']!, _sideMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_sideMeta);
+    }
+    if (data.containsKey('units_e4')) {
+      context.handle(
+        _unitsE4Meta,
+        unitsE4.isAcceptableOrUnknown(data['units_e4']!, _unitsE4Meta),
+      );
+    } else if (isInserting) {
+      context.missing(_unitsE4Meta);
+    }
+    if (data.containsKey('price_e4')) {
+      context.handle(
+        _priceE4Meta,
+        priceE4.isAcceptableOrUnknown(data['price_e4']!, _priceE4Meta),
+      );
+    } else if (isInserting) {
+      context.missing(_priceE4Meta);
+    }
+    if (data.containsKey('fees_paise')) {
+      context.handle(
+        _feesPaiseMeta,
+        feesPaise.isAcceptableOrUnknown(data['fees_paise']!, _feesPaiseMeta),
+      );
+    }
+    if (data.containsKey('reason')) {
+      context.handle(
+        _reasonMeta,
+        reason.isAcceptableOrUnknown(data['reason']!, _reasonMeta),
+      );
+    }
+    return context;
+  }
+
+  @override
+  Set<GeneratedColumn> get $primaryKey => {id};
+  @override
+  AgentTrade map(Map<String, dynamic> data, {String? tablePrefix}) {
+    final effectivePrefix = tablePrefix != null ? '$tablePrefix.' : '';
+    return AgentTrade(
+      id: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}id'],
+      )!,
+      agent: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}agent'],
+      )!,
+      instrumentId: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}instrument_id'],
+      )!,
+      date: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}date'],
+      )!,
+      at: attachedDatabase.typeMapping.read(
+        DriftSqlType.dateTime,
+        data['${effectivePrefix}at'],
+      )!,
+      side: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}side'],
+      )!,
+      unitsE4: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}units_e4'],
+      )!,
+      priceE4: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}price_e4'],
+      )!,
+      feesPaise: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}fees_paise'],
+      )!,
+      reason: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}reason'],
+      )!,
+    );
+  }
+
+  @override
+  $AgentTradesTable createAlias(String alias) {
+    return $AgentTradesTable(attachedDatabase, alias);
+  }
+}
+
+class AgentTrade extends DataClass implements Insertable<AgentTrade> {
+  final int id;
+  final String agent;
+  final int instrumentId;
+  final String date;
+  final DateTime at;
+  final String side;
+  final int unitsE4;
+  final int priceE4;
+  final int feesPaise;
+  final String reason;
+  const AgentTrade({
+    required this.id,
+    required this.agent,
+    required this.instrumentId,
+    required this.date,
+    required this.at,
+    required this.side,
+    required this.unitsE4,
+    required this.priceE4,
+    required this.feesPaise,
+    required this.reason,
+  });
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    map['id'] = Variable<int>(id);
+    map['agent'] = Variable<String>(agent);
+    map['instrument_id'] = Variable<int>(instrumentId);
+    map['date'] = Variable<String>(date);
+    map['at'] = Variable<DateTime>(at);
+    map['side'] = Variable<String>(side);
+    map['units_e4'] = Variable<int>(unitsE4);
+    map['price_e4'] = Variable<int>(priceE4);
+    map['fees_paise'] = Variable<int>(feesPaise);
+    map['reason'] = Variable<String>(reason);
+    return map;
+  }
+
+  AgentTradesCompanion toCompanion(bool nullToAbsent) {
+    return AgentTradesCompanion(
+      id: Value(id),
+      agent: Value(agent),
+      instrumentId: Value(instrumentId),
+      date: Value(date),
+      at: Value(at),
+      side: Value(side),
+      unitsE4: Value(unitsE4),
+      priceE4: Value(priceE4),
+      feesPaise: Value(feesPaise),
+      reason: Value(reason),
+    );
+  }
+
+  factory AgentTrade.fromJson(
+    Map<String, dynamic> json, {
+    ValueSerializer? serializer,
+  }) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return AgentTrade(
+      id: serializer.fromJson<int>(json['id']),
+      agent: serializer.fromJson<String>(json['agent']),
+      instrumentId: serializer.fromJson<int>(json['instrumentId']),
+      date: serializer.fromJson<String>(json['date']),
+      at: serializer.fromJson<DateTime>(json['at']),
+      side: serializer.fromJson<String>(json['side']),
+      unitsE4: serializer.fromJson<int>(json['unitsE4']),
+      priceE4: serializer.fromJson<int>(json['priceE4']),
+      feesPaise: serializer.fromJson<int>(json['feesPaise']),
+      reason: serializer.fromJson<String>(json['reason']),
+    );
+  }
+  @override
+  Map<String, dynamic> toJson({ValueSerializer? serializer}) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return <String, dynamic>{
+      'id': serializer.toJson<int>(id),
+      'agent': serializer.toJson<String>(agent),
+      'instrumentId': serializer.toJson<int>(instrumentId),
+      'date': serializer.toJson<String>(date),
+      'at': serializer.toJson<DateTime>(at),
+      'side': serializer.toJson<String>(side),
+      'unitsE4': serializer.toJson<int>(unitsE4),
+      'priceE4': serializer.toJson<int>(priceE4),
+      'feesPaise': serializer.toJson<int>(feesPaise),
+      'reason': serializer.toJson<String>(reason),
+    };
+  }
+
+  AgentTrade copyWith({
+    int? id,
+    String? agent,
+    int? instrumentId,
+    String? date,
+    DateTime? at,
+    String? side,
+    int? unitsE4,
+    int? priceE4,
+    int? feesPaise,
+    String? reason,
+  }) => AgentTrade(
+    id: id ?? this.id,
+    agent: agent ?? this.agent,
+    instrumentId: instrumentId ?? this.instrumentId,
+    date: date ?? this.date,
+    at: at ?? this.at,
+    side: side ?? this.side,
+    unitsE4: unitsE4 ?? this.unitsE4,
+    priceE4: priceE4 ?? this.priceE4,
+    feesPaise: feesPaise ?? this.feesPaise,
+    reason: reason ?? this.reason,
+  );
+  AgentTrade copyWithCompanion(AgentTradesCompanion data) {
+    return AgentTrade(
+      id: data.id.present ? data.id.value : this.id,
+      agent: data.agent.present ? data.agent.value : this.agent,
+      instrumentId: data.instrumentId.present
+          ? data.instrumentId.value
+          : this.instrumentId,
+      date: data.date.present ? data.date.value : this.date,
+      at: data.at.present ? data.at.value : this.at,
+      side: data.side.present ? data.side.value : this.side,
+      unitsE4: data.unitsE4.present ? data.unitsE4.value : this.unitsE4,
+      priceE4: data.priceE4.present ? data.priceE4.value : this.priceE4,
+      feesPaise: data.feesPaise.present ? data.feesPaise.value : this.feesPaise,
+      reason: data.reason.present ? data.reason.value : this.reason,
+    );
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('AgentTrade(')
+          ..write('id: $id, ')
+          ..write('agent: $agent, ')
+          ..write('instrumentId: $instrumentId, ')
+          ..write('date: $date, ')
+          ..write('at: $at, ')
+          ..write('side: $side, ')
+          ..write('unitsE4: $unitsE4, ')
+          ..write('priceE4: $priceE4, ')
+          ..write('feesPaise: $feesPaise, ')
+          ..write('reason: $reason')
+          ..write(')'))
+        .toString();
+  }
+
+  @override
+  int get hashCode => Object.hash(
+    id,
+    agent,
+    instrumentId,
+    date,
+    at,
+    side,
+    unitsE4,
+    priceE4,
+    feesPaise,
+    reason,
+  );
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      (other is AgentTrade &&
+          other.id == this.id &&
+          other.agent == this.agent &&
+          other.instrumentId == this.instrumentId &&
+          other.date == this.date &&
+          other.at == this.at &&
+          other.side == this.side &&
+          other.unitsE4 == this.unitsE4 &&
+          other.priceE4 == this.priceE4 &&
+          other.feesPaise == this.feesPaise &&
+          other.reason == this.reason);
+}
+
+class AgentTradesCompanion extends UpdateCompanion<AgentTrade> {
+  final Value<int> id;
+  final Value<String> agent;
+  final Value<int> instrumentId;
+  final Value<String> date;
+  final Value<DateTime> at;
+  final Value<String> side;
+  final Value<int> unitsE4;
+  final Value<int> priceE4;
+  final Value<int> feesPaise;
+  final Value<String> reason;
+  const AgentTradesCompanion({
+    this.id = const Value.absent(),
+    this.agent = const Value.absent(),
+    this.instrumentId = const Value.absent(),
+    this.date = const Value.absent(),
+    this.at = const Value.absent(),
+    this.side = const Value.absent(),
+    this.unitsE4 = const Value.absent(),
+    this.priceE4 = const Value.absent(),
+    this.feesPaise = const Value.absent(),
+    this.reason = const Value.absent(),
+  });
+  AgentTradesCompanion.insert({
+    this.id = const Value.absent(),
+    required String agent,
+    required int instrumentId,
+    required String date,
+    required DateTime at,
+    required String side,
+    required int unitsE4,
+    required int priceE4,
+    this.feesPaise = const Value.absent(),
+    this.reason = const Value.absent(),
+  }) : agent = Value(agent),
+       instrumentId = Value(instrumentId),
+       date = Value(date),
+       at = Value(at),
+       side = Value(side),
+       unitsE4 = Value(unitsE4),
+       priceE4 = Value(priceE4);
+  static Insertable<AgentTrade> custom({
+    Expression<int>? id,
+    Expression<String>? agent,
+    Expression<int>? instrumentId,
+    Expression<String>? date,
+    Expression<DateTime>? at,
+    Expression<String>? side,
+    Expression<int>? unitsE4,
+    Expression<int>? priceE4,
+    Expression<int>? feesPaise,
+    Expression<String>? reason,
+  }) {
+    return RawValuesInsertable({
+      if (id != null) 'id': id,
+      if (agent != null) 'agent': agent,
+      if (instrumentId != null) 'instrument_id': instrumentId,
+      if (date != null) 'date': date,
+      if (at != null) 'at': at,
+      if (side != null) 'side': side,
+      if (unitsE4 != null) 'units_e4': unitsE4,
+      if (priceE4 != null) 'price_e4': priceE4,
+      if (feesPaise != null) 'fees_paise': feesPaise,
+      if (reason != null) 'reason': reason,
+    });
+  }
+
+  AgentTradesCompanion copyWith({
+    Value<int>? id,
+    Value<String>? agent,
+    Value<int>? instrumentId,
+    Value<String>? date,
+    Value<DateTime>? at,
+    Value<String>? side,
+    Value<int>? unitsE4,
+    Value<int>? priceE4,
+    Value<int>? feesPaise,
+    Value<String>? reason,
+  }) {
+    return AgentTradesCompanion(
+      id: id ?? this.id,
+      agent: agent ?? this.agent,
+      instrumentId: instrumentId ?? this.instrumentId,
+      date: date ?? this.date,
+      at: at ?? this.at,
+      side: side ?? this.side,
+      unitsE4: unitsE4 ?? this.unitsE4,
+      priceE4: priceE4 ?? this.priceE4,
+      feesPaise: feesPaise ?? this.feesPaise,
+      reason: reason ?? this.reason,
+    );
+  }
+
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    if (id.present) {
+      map['id'] = Variable<int>(id.value);
+    }
+    if (agent.present) {
+      map['agent'] = Variable<String>(agent.value);
+    }
+    if (instrumentId.present) {
+      map['instrument_id'] = Variable<int>(instrumentId.value);
+    }
+    if (date.present) {
+      map['date'] = Variable<String>(date.value);
+    }
+    if (at.present) {
+      map['at'] = Variable<DateTime>(at.value);
+    }
+    if (side.present) {
+      map['side'] = Variable<String>(side.value);
+    }
+    if (unitsE4.present) {
+      map['units_e4'] = Variable<int>(unitsE4.value);
+    }
+    if (priceE4.present) {
+      map['price_e4'] = Variable<int>(priceE4.value);
+    }
+    if (feesPaise.present) {
+      map['fees_paise'] = Variable<int>(feesPaise.value);
+    }
+    if (reason.present) {
+      map['reason'] = Variable<String>(reason.value);
+    }
+    return map;
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('AgentTradesCompanion(')
+          ..write('id: $id, ')
+          ..write('agent: $agent, ')
+          ..write('instrumentId: $instrumentId, ')
+          ..write('date: $date, ')
+          ..write('at: $at, ')
+          ..write('side: $side, ')
+          ..write('unitsE4: $unitsE4, ')
+          ..write('priceE4: $priceE4, ')
+          ..write('feesPaise: $feesPaise, ')
+          ..write('reason: $reason')
+          ..write(')'))
+        .toString();
+  }
+}
+
+class $AgentRunsTable extends AgentRuns
+    with TableInfo<$AgentRunsTable, AgentRun> {
+  @override
+  final GeneratedDatabase attachedDatabase;
+  final String? _alias;
+  $AgentRunsTable(this.attachedDatabase, [this._alias]);
+  static const VerificationMeta _idMeta = const VerificationMeta('id');
+  @override
+  late final GeneratedColumn<int> id = GeneratedColumn<int>(
+    'id',
+    aliasedName,
+    false,
+    hasAutoIncrement: true,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+    defaultConstraints: GeneratedColumn.constraintIsAlways(
+      'PRIMARY KEY AUTOINCREMENT',
+    ),
+  );
+  static const VerificationMeta _agentMeta = const VerificationMeta('agent');
+  @override
+  late final GeneratedColumn<String> agent = GeneratedColumn<String>(
+    'agent',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _dateMeta = const VerificationMeta('date');
+  @override
+  late final GeneratedColumn<String> date = GeneratedColumn<String>(
+    'date',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _atMeta = const VerificationMeta('at');
+  @override
+  late final GeneratedColumn<DateTime> at = GeneratedColumn<DateTime>(
+    'at',
+    aliasedName,
+    false,
+    type: DriftSqlType.dateTime,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _summaryMeta = const VerificationMeta(
+    'summary',
+  );
+  @override
+  late final GeneratedColumn<String> summary = GeneratedColumn<String>(
+    'summary',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _valuePaiseMeta = const VerificationMeta(
+    'valuePaise',
+  );
+  @override
+  late final GeneratedColumn<int> valuePaise = GeneratedColumn<int>(
+    'value_paise',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _cashPaiseMeta = const VerificationMeta(
+    'cashPaise',
+  );
+  @override
+  late final GeneratedColumn<int> cashPaise = GeneratedColumn<int>(
+    'cash_paise',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _aiMeta = const VerificationMeta('ai');
+  @override
+  late final GeneratedColumn<bool> ai = GeneratedColumn<bool>(
+    'ai',
+    aliasedName,
+    false,
+    type: DriftSqlType.bool,
+    requiredDuringInsert: false,
+    defaultConstraints: GeneratedColumn.constraintIsAlways(
+      'CHECK ("ai" IN (0, 1))',
+    ),
+    defaultValue: const Constant(false),
+  );
+  @override
+  List<GeneratedColumn> get $columns => [
+    id,
+    agent,
+    date,
+    at,
+    summary,
+    valuePaise,
+    cashPaise,
+    ai,
+  ];
+  @override
+  String get aliasedName => _alias ?? actualTableName;
+  @override
+  String get actualTableName => $name;
+  static const String $name = 'agent_runs';
+  @override
+  VerificationContext validateIntegrity(
+    Insertable<AgentRun> instance, {
+    bool isInserting = false,
+  }) {
+    final context = VerificationContext();
+    final data = instance.toColumns(true);
+    if (data.containsKey('id')) {
+      context.handle(_idMeta, id.isAcceptableOrUnknown(data['id']!, _idMeta));
+    }
+    if (data.containsKey('agent')) {
+      context.handle(
+        _agentMeta,
+        agent.isAcceptableOrUnknown(data['agent']!, _agentMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_agentMeta);
+    }
+    if (data.containsKey('date')) {
+      context.handle(
+        _dateMeta,
+        date.isAcceptableOrUnknown(data['date']!, _dateMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_dateMeta);
+    }
+    if (data.containsKey('at')) {
+      context.handle(_atMeta, at.isAcceptableOrUnknown(data['at']!, _atMeta));
+    } else if (isInserting) {
+      context.missing(_atMeta);
+    }
+    if (data.containsKey('summary')) {
+      context.handle(
+        _summaryMeta,
+        summary.isAcceptableOrUnknown(data['summary']!, _summaryMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_summaryMeta);
+    }
+    if (data.containsKey('value_paise')) {
+      context.handle(
+        _valuePaiseMeta,
+        valuePaise.isAcceptableOrUnknown(data['value_paise']!, _valuePaiseMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_valuePaiseMeta);
+    }
+    if (data.containsKey('cash_paise')) {
+      context.handle(
+        _cashPaiseMeta,
+        cashPaise.isAcceptableOrUnknown(data['cash_paise']!, _cashPaiseMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_cashPaiseMeta);
+    }
+    if (data.containsKey('ai')) {
+      context.handle(_aiMeta, ai.isAcceptableOrUnknown(data['ai']!, _aiMeta));
+    }
+    return context;
+  }
+
+  @override
+  Set<GeneratedColumn> get $primaryKey => {id};
+  @override
+  AgentRun map(Map<String, dynamic> data, {String? tablePrefix}) {
+    final effectivePrefix = tablePrefix != null ? '$tablePrefix.' : '';
+    return AgentRun(
+      id: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}id'],
+      )!,
+      agent: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}agent'],
+      )!,
+      date: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}date'],
+      )!,
+      at: attachedDatabase.typeMapping.read(
+        DriftSqlType.dateTime,
+        data['${effectivePrefix}at'],
+      )!,
+      summary: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}summary'],
+      )!,
+      valuePaise: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}value_paise'],
+      )!,
+      cashPaise: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}cash_paise'],
+      )!,
+      ai: attachedDatabase.typeMapping.read(
+        DriftSqlType.bool,
+        data['${effectivePrefix}ai'],
+      )!,
+    );
+  }
+
+  @override
+  $AgentRunsTable createAlias(String alias) {
+    return $AgentRunsTable(attachedDatabase, alias);
+  }
+}
+
+class AgentRun extends DataClass implements Insertable<AgentRun> {
+  final int id;
+  final String agent;
+  final String date;
+  final DateTime at;
+  final String summary;
+  final int valuePaise;
+  final int cashPaise;
+  final bool ai;
+  const AgentRun({
+    required this.id,
+    required this.agent,
+    required this.date,
+    required this.at,
+    required this.summary,
+    required this.valuePaise,
+    required this.cashPaise,
+    required this.ai,
+  });
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    map['id'] = Variable<int>(id);
+    map['agent'] = Variable<String>(agent);
+    map['date'] = Variable<String>(date);
+    map['at'] = Variable<DateTime>(at);
+    map['summary'] = Variable<String>(summary);
+    map['value_paise'] = Variable<int>(valuePaise);
+    map['cash_paise'] = Variable<int>(cashPaise);
+    map['ai'] = Variable<bool>(ai);
+    return map;
+  }
+
+  AgentRunsCompanion toCompanion(bool nullToAbsent) {
+    return AgentRunsCompanion(
+      id: Value(id),
+      agent: Value(agent),
+      date: Value(date),
+      at: Value(at),
+      summary: Value(summary),
+      valuePaise: Value(valuePaise),
+      cashPaise: Value(cashPaise),
+      ai: Value(ai),
+    );
+  }
+
+  factory AgentRun.fromJson(
+    Map<String, dynamic> json, {
+    ValueSerializer? serializer,
+  }) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return AgentRun(
+      id: serializer.fromJson<int>(json['id']),
+      agent: serializer.fromJson<String>(json['agent']),
+      date: serializer.fromJson<String>(json['date']),
+      at: serializer.fromJson<DateTime>(json['at']),
+      summary: serializer.fromJson<String>(json['summary']),
+      valuePaise: serializer.fromJson<int>(json['valuePaise']),
+      cashPaise: serializer.fromJson<int>(json['cashPaise']),
+      ai: serializer.fromJson<bool>(json['ai']),
+    );
+  }
+  @override
+  Map<String, dynamic> toJson({ValueSerializer? serializer}) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return <String, dynamic>{
+      'id': serializer.toJson<int>(id),
+      'agent': serializer.toJson<String>(agent),
+      'date': serializer.toJson<String>(date),
+      'at': serializer.toJson<DateTime>(at),
+      'summary': serializer.toJson<String>(summary),
+      'valuePaise': serializer.toJson<int>(valuePaise),
+      'cashPaise': serializer.toJson<int>(cashPaise),
+      'ai': serializer.toJson<bool>(ai),
+    };
+  }
+
+  AgentRun copyWith({
+    int? id,
+    String? agent,
+    String? date,
+    DateTime? at,
+    String? summary,
+    int? valuePaise,
+    int? cashPaise,
+    bool? ai,
+  }) => AgentRun(
+    id: id ?? this.id,
+    agent: agent ?? this.agent,
+    date: date ?? this.date,
+    at: at ?? this.at,
+    summary: summary ?? this.summary,
+    valuePaise: valuePaise ?? this.valuePaise,
+    cashPaise: cashPaise ?? this.cashPaise,
+    ai: ai ?? this.ai,
+  );
+  AgentRun copyWithCompanion(AgentRunsCompanion data) {
+    return AgentRun(
+      id: data.id.present ? data.id.value : this.id,
+      agent: data.agent.present ? data.agent.value : this.agent,
+      date: data.date.present ? data.date.value : this.date,
+      at: data.at.present ? data.at.value : this.at,
+      summary: data.summary.present ? data.summary.value : this.summary,
+      valuePaise: data.valuePaise.present
+          ? data.valuePaise.value
+          : this.valuePaise,
+      cashPaise: data.cashPaise.present ? data.cashPaise.value : this.cashPaise,
+      ai: data.ai.present ? data.ai.value : this.ai,
+    );
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('AgentRun(')
+          ..write('id: $id, ')
+          ..write('agent: $agent, ')
+          ..write('date: $date, ')
+          ..write('at: $at, ')
+          ..write('summary: $summary, ')
+          ..write('valuePaise: $valuePaise, ')
+          ..write('cashPaise: $cashPaise, ')
+          ..write('ai: $ai')
+          ..write(')'))
+        .toString();
+  }
+
+  @override
+  int get hashCode =>
+      Object.hash(id, agent, date, at, summary, valuePaise, cashPaise, ai);
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      (other is AgentRun &&
+          other.id == this.id &&
+          other.agent == this.agent &&
+          other.date == this.date &&
+          other.at == this.at &&
+          other.summary == this.summary &&
+          other.valuePaise == this.valuePaise &&
+          other.cashPaise == this.cashPaise &&
+          other.ai == this.ai);
+}
+
+class AgentRunsCompanion extends UpdateCompanion<AgentRun> {
+  final Value<int> id;
+  final Value<String> agent;
+  final Value<String> date;
+  final Value<DateTime> at;
+  final Value<String> summary;
+  final Value<int> valuePaise;
+  final Value<int> cashPaise;
+  final Value<bool> ai;
+  const AgentRunsCompanion({
+    this.id = const Value.absent(),
+    this.agent = const Value.absent(),
+    this.date = const Value.absent(),
+    this.at = const Value.absent(),
+    this.summary = const Value.absent(),
+    this.valuePaise = const Value.absent(),
+    this.cashPaise = const Value.absent(),
+    this.ai = const Value.absent(),
+  });
+  AgentRunsCompanion.insert({
+    this.id = const Value.absent(),
+    required String agent,
+    required String date,
+    required DateTime at,
+    required String summary,
+    required int valuePaise,
+    required int cashPaise,
+    this.ai = const Value.absent(),
+  }) : agent = Value(agent),
+       date = Value(date),
+       at = Value(at),
+       summary = Value(summary),
+       valuePaise = Value(valuePaise),
+       cashPaise = Value(cashPaise);
+  static Insertable<AgentRun> custom({
+    Expression<int>? id,
+    Expression<String>? agent,
+    Expression<String>? date,
+    Expression<DateTime>? at,
+    Expression<String>? summary,
+    Expression<int>? valuePaise,
+    Expression<int>? cashPaise,
+    Expression<bool>? ai,
+  }) {
+    return RawValuesInsertable({
+      if (id != null) 'id': id,
+      if (agent != null) 'agent': agent,
+      if (date != null) 'date': date,
+      if (at != null) 'at': at,
+      if (summary != null) 'summary': summary,
+      if (valuePaise != null) 'value_paise': valuePaise,
+      if (cashPaise != null) 'cash_paise': cashPaise,
+      if (ai != null) 'ai': ai,
+    });
+  }
+
+  AgentRunsCompanion copyWith({
+    Value<int>? id,
+    Value<String>? agent,
+    Value<String>? date,
+    Value<DateTime>? at,
+    Value<String>? summary,
+    Value<int>? valuePaise,
+    Value<int>? cashPaise,
+    Value<bool>? ai,
+  }) {
+    return AgentRunsCompanion(
+      id: id ?? this.id,
+      agent: agent ?? this.agent,
+      date: date ?? this.date,
+      at: at ?? this.at,
+      summary: summary ?? this.summary,
+      valuePaise: valuePaise ?? this.valuePaise,
+      cashPaise: cashPaise ?? this.cashPaise,
+      ai: ai ?? this.ai,
+    );
+  }
+
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    if (id.present) {
+      map['id'] = Variable<int>(id.value);
+    }
+    if (agent.present) {
+      map['agent'] = Variable<String>(agent.value);
+    }
+    if (date.present) {
+      map['date'] = Variable<String>(date.value);
+    }
+    if (at.present) {
+      map['at'] = Variable<DateTime>(at.value);
+    }
+    if (summary.present) {
+      map['summary'] = Variable<String>(summary.value);
+    }
+    if (valuePaise.present) {
+      map['value_paise'] = Variable<int>(valuePaise.value);
+    }
+    if (cashPaise.present) {
+      map['cash_paise'] = Variable<int>(cashPaise.value);
+    }
+    if (ai.present) {
+      map['ai'] = Variable<bool>(ai.value);
+    }
+    return map;
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('AgentRunsCompanion(')
+          ..write('id: $id, ')
+          ..write('agent: $agent, ')
+          ..write('date: $date, ')
+          ..write('at: $at, ')
+          ..write('summary: $summary, ')
+          ..write('valuePaise: $valuePaise, ')
+          ..write('cashPaise: $cashPaise, ')
+          ..write('ai: $ai')
+          ..write(')'))
+        .toString();
+  }
+}
+
+class $AgentNotesTable extends AgentNotes
+    with TableInfo<$AgentNotesTable, AgentNote> {
+  @override
+  final GeneratedDatabase attachedDatabase;
+  final String? _alias;
+  $AgentNotesTable(this.attachedDatabase, [this._alias]);
+  static const VerificationMeta _idMeta = const VerificationMeta('id');
+  @override
+  late final GeneratedColumn<int> id = GeneratedColumn<int>(
+    'id',
+    aliasedName,
+    false,
+    hasAutoIncrement: true,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+    defaultConstraints: GeneratedColumn.constraintIsAlways(
+      'PRIMARY KEY AUTOINCREMENT',
+    ),
+  );
+  static const VerificationMeta _atMeta = const VerificationMeta('at');
+  @override
+  late final GeneratedColumn<DateTime> at = GeneratedColumn<DateTime>(
+    'at',
+    aliasedName,
+    false,
+    type: DriftSqlType.dateTime,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _bodyMeta = const VerificationMeta('body');
+  @override
+  late final GeneratedColumn<String> body = GeneratedColumn<String>(
+    'body',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _agentMeta = const VerificationMeta('agent');
+  @override
+  late final GeneratedColumn<String> agent = GeneratedColumn<String>(
+    'agent',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
+  @override
+  List<GeneratedColumn> get $columns => [id, at, body, agent];
+  @override
+  String get aliasedName => _alias ?? actualTableName;
+  @override
+  String get actualTableName => $name;
+  static const String $name = 'agent_notes';
+  @override
+  VerificationContext validateIntegrity(
+    Insertable<AgentNote> instance, {
+    bool isInserting = false,
+  }) {
+    final context = VerificationContext();
+    final data = instance.toColumns(true);
+    if (data.containsKey('id')) {
+      context.handle(_idMeta, id.isAcceptableOrUnknown(data['id']!, _idMeta));
+    }
+    if (data.containsKey('at')) {
+      context.handle(_atMeta, at.isAcceptableOrUnknown(data['at']!, _atMeta));
+    } else if (isInserting) {
+      context.missing(_atMeta);
+    }
+    if (data.containsKey('body')) {
+      context.handle(
+        _bodyMeta,
+        body.isAcceptableOrUnknown(data['body']!, _bodyMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_bodyMeta);
+    }
+    if (data.containsKey('agent')) {
+      context.handle(
+        _agentMeta,
+        agent.isAcceptableOrUnknown(data['agent']!, _agentMeta),
+      );
+    }
+    return context;
+  }
+
+  @override
+  Set<GeneratedColumn> get $primaryKey => {id};
+  @override
+  AgentNote map(Map<String, dynamic> data, {String? tablePrefix}) {
+    final effectivePrefix = tablePrefix != null ? '$tablePrefix.' : '';
+    return AgentNote(
+      id: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}id'],
+      )!,
+      at: attachedDatabase.typeMapping.read(
+        DriftSqlType.dateTime,
+        data['${effectivePrefix}at'],
+      )!,
+      body: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}body'],
+      )!,
+      agent: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}agent'],
+      ),
+    );
+  }
+
+  @override
+  $AgentNotesTable createAlias(String alias) {
+    return $AgentNotesTable(attachedDatabase, alias);
+  }
+}
+
+class AgentNote extends DataClass implements Insertable<AgentNote> {
+  final int id;
+  final DateTime at;
+  final String body;
+  final String? agent;
+  const AgentNote({
+    required this.id,
+    required this.at,
+    required this.body,
+    this.agent,
+  });
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    map['id'] = Variable<int>(id);
+    map['at'] = Variable<DateTime>(at);
+    map['body'] = Variable<String>(body);
+    if (!nullToAbsent || agent != null) {
+      map['agent'] = Variable<String>(agent);
+    }
+    return map;
+  }
+
+  AgentNotesCompanion toCompanion(bool nullToAbsent) {
+    return AgentNotesCompanion(
+      id: Value(id),
+      at: Value(at),
+      body: Value(body),
+      agent: agent == null && nullToAbsent
+          ? const Value.absent()
+          : Value(agent),
+    );
+  }
+
+  factory AgentNote.fromJson(
+    Map<String, dynamic> json, {
+    ValueSerializer? serializer,
+  }) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return AgentNote(
+      id: serializer.fromJson<int>(json['id']),
+      at: serializer.fromJson<DateTime>(json['at']),
+      body: serializer.fromJson<String>(json['body']),
+      agent: serializer.fromJson<String?>(json['agent']),
+    );
+  }
+  @override
+  Map<String, dynamic> toJson({ValueSerializer? serializer}) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return <String, dynamic>{
+      'id': serializer.toJson<int>(id),
+      'at': serializer.toJson<DateTime>(at),
+      'body': serializer.toJson<String>(body),
+      'agent': serializer.toJson<String?>(agent),
+    };
+  }
+
+  AgentNote copyWith({
+    int? id,
+    DateTime? at,
+    String? body,
+    Value<String?> agent = const Value.absent(),
+  }) => AgentNote(
+    id: id ?? this.id,
+    at: at ?? this.at,
+    body: body ?? this.body,
+    agent: agent.present ? agent.value : this.agent,
+  );
+  AgentNote copyWithCompanion(AgentNotesCompanion data) {
+    return AgentNote(
+      id: data.id.present ? data.id.value : this.id,
+      at: data.at.present ? data.at.value : this.at,
+      body: data.body.present ? data.body.value : this.body,
+      agent: data.agent.present ? data.agent.value : this.agent,
+    );
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('AgentNote(')
+          ..write('id: $id, ')
+          ..write('at: $at, ')
+          ..write('body: $body, ')
+          ..write('agent: $agent')
+          ..write(')'))
+        .toString();
+  }
+
+  @override
+  int get hashCode => Object.hash(id, at, body, agent);
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      (other is AgentNote &&
+          other.id == this.id &&
+          other.at == this.at &&
+          other.body == this.body &&
+          other.agent == this.agent);
+}
+
+class AgentNotesCompanion extends UpdateCompanion<AgentNote> {
+  final Value<int> id;
+  final Value<DateTime> at;
+  final Value<String> body;
+  final Value<String?> agent;
+  const AgentNotesCompanion({
+    this.id = const Value.absent(),
+    this.at = const Value.absent(),
+    this.body = const Value.absent(),
+    this.agent = const Value.absent(),
+  });
+  AgentNotesCompanion.insert({
+    this.id = const Value.absent(),
+    required DateTime at,
+    required String body,
+    this.agent = const Value.absent(),
+  }) : at = Value(at),
+       body = Value(body);
+  static Insertable<AgentNote> custom({
+    Expression<int>? id,
+    Expression<DateTime>? at,
+    Expression<String>? body,
+    Expression<String>? agent,
+  }) {
+    return RawValuesInsertable({
+      if (id != null) 'id': id,
+      if (at != null) 'at': at,
+      if (body != null) 'body': body,
+      if (agent != null) 'agent': agent,
+    });
+  }
+
+  AgentNotesCompanion copyWith({
+    Value<int>? id,
+    Value<DateTime>? at,
+    Value<String>? body,
+    Value<String?>? agent,
+  }) {
+    return AgentNotesCompanion(
+      id: id ?? this.id,
+      at: at ?? this.at,
+      body: body ?? this.body,
+      agent: agent ?? this.agent,
+    );
+  }
+
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    if (id.present) {
+      map['id'] = Variable<int>(id.value);
+    }
+    if (at.present) {
+      map['at'] = Variable<DateTime>(at.value);
+    }
+    if (body.present) {
+      map['body'] = Variable<String>(body.value);
+    }
+    if (agent.present) {
+      map['agent'] = Variable<String>(agent.value);
+    }
+    return map;
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('AgentNotesCompanion(')
+          ..write('id: $id, ')
+          ..write('at: $at, ')
+          ..write('body: $body, ')
+          ..write('agent: $agent')
+          ..write(')'))
+        .toString();
+  }
+}
+
 abstract class _$MarketDb extends GeneratedDatabase {
   _$MarketDb(QueryExecutor e) : super(e);
   $MarketDbManager get managers => $MarketDbManager(this);
@@ -3003,6 +4364,9 @@ abstract class _$MarketDb extends GeneratedDatabase {
   late final $HolidaysTable holidays = $HolidaysTable(this);
   late final $UniverseTable universe = $UniverseTable(this);
   late final $FundamentalsTable fundamentals = $FundamentalsTable(this);
+  late final $AgentTradesTable agentTrades = $AgentTradesTable(this);
+  late final $AgentRunsTable agentRuns = $AgentRunsTable(this);
+  late final $AgentNotesTable agentNotes = $AgentNotesTable(this);
   @override
   Iterable<TableInfo<Table, Object?>> get allTables =>
       allSchemaEntities.whereType<TableInfo<Table, Object?>>();
@@ -3016,6 +4380,9 @@ abstract class _$MarketDb extends GeneratedDatabase {
     holidays,
     universe,
     fundamentals,
+    agentTrades,
+    agentRuns,
+    agentNotes,
   ];
   @override
   DriftDatabaseOptions get options =>
@@ -4671,6 +6038,727 @@ typedef $$FundamentalsTableProcessedTableManager =
       Fundamental,
       PrefetchHooks Function()
     >;
+typedef $$AgentTradesTableCreateCompanionBuilder =
+    AgentTradesCompanion Function({
+      Value<int> id,
+      required String agent,
+      required int instrumentId,
+      required String date,
+      required DateTime at,
+      required String side,
+      required int unitsE4,
+      required int priceE4,
+      Value<int> feesPaise,
+      Value<String> reason,
+    });
+typedef $$AgentTradesTableUpdateCompanionBuilder =
+    AgentTradesCompanion Function({
+      Value<int> id,
+      Value<String> agent,
+      Value<int> instrumentId,
+      Value<String> date,
+      Value<DateTime> at,
+      Value<String> side,
+      Value<int> unitsE4,
+      Value<int> priceE4,
+      Value<int> feesPaise,
+      Value<String> reason,
+    });
+
+class $$AgentTradesTableFilterComposer
+    extends Composer<_$MarketDb, $AgentTradesTable> {
+  $$AgentTradesTableFilterComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnFilters<int> get id => $composableBuilder(
+    column: $table.id,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get agent => $composableBuilder(
+    column: $table.agent,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get instrumentId => $composableBuilder(
+    column: $table.instrumentId,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get date => $composableBuilder(
+    column: $table.date,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<DateTime> get at => $composableBuilder(
+    column: $table.at,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get side => $composableBuilder(
+    column: $table.side,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get unitsE4 => $composableBuilder(
+    column: $table.unitsE4,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get priceE4 => $composableBuilder(
+    column: $table.priceE4,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get feesPaise => $composableBuilder(
+    column: $table.feesPaise,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get reason => $composableBuilder(
+    column: $table.reason,
+    builder: (column) => ColumnFilters(column),
+  );
+}
+
+class $$AgentTradesTableOrderingComposer
+    extends Composer<_$MarketDb, $AgentTradesTable> {
+  $$AgentTradesTableOrderingComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnOrderings<int> get id => $composableBuilder(
+    column: $table.id,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get agent => $composableBuilder(
+    column: $table.agent,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<int> get instrumentId => $composableBuilder(
+    column: $table.instrumentId,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get date => $composableBuilder(
+    column: $table.date,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<DateTime> get at => $composableBuilder(
+    column: $table.at,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get side => $composableBuilder(
+    column: $table.side,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<int> get unitsE4 => $composableBuilder(
+    column: $table.unitsE4,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<int> get priceE4 => $composableBuilder(
+    column: $table.priceE4,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<int> get feesPaise => $composableBuilder(
+    column: $table.feesPaise,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get reason => $composableBuilder(
+    column: $table.reason,
+    builder: (column) => ColumnOrderings(column),
+  );
+}
+
+class $$AgentTradesTableAnnotationComposer
+    extends Composer<_$MarketDb, $AgentTradesTable> {
+  $$AgentTradesTableAnnotationComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  GeneratedColumn<int> get id =>
+      $composableBuilder(column: $table.id, builder: (column) => column);
+
+  GeneratedColumn<String> get agent =>
+      $composableBuilder(column: $table.agent, builder: (column) => column);
+
+  GeneratedColumn<int> get instrumentId => $composableBuilder(
+    column: $table.instrumentId,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<String> get date =>
+      $composableBuilder(column: $table.date, builder: (column) => column);
+
+  GeneratedColumn<DateTime> get at =>
+      $composableBuilder(column: $table.at, builder: (column) => column);
+
+  GeneratedColumn<String> get side =>
+      $composableBuilder(column: $table.side, builder: (column) => column);
+
+  GeneratedColumn<int> get unitsE4 =>
+      $composableBuilder(column: $table.unitsE4, builder: (column) => column);
+
+  GeneratedColumn<int> get priceE4 =>
+      $composableBuilder(column: $table.priceE4, builder: (column) => column);
+
+  GeneratedColumn<int> get feesPaise =>
+      $composableBuilder(column: $table.feesPaise, builder: (column) => column);
+
+  GeneratedColumn<String> get reason =>
+      $composableBuilder(column: $table.reason, builder: (column) => column);
+}
+
+class $$AgentTradesTableTableManager
+    extends
+        RootTableManager<
+          _$MarketDb,
+          $AgentTradesTable,
+          AgentTrade,
+          $$AgentTradesTableFilterComposer,
+          $$AgentTradesTableOrderingComposer,
+          $$AgentTradesTableAnnotationComposer,
+          $$AgentTradesTableCreateCompanionBuilder,
+          $$AgentTradesTableUpdateCompanionBuilder,
+          (
+            AgentTrade,
+            BaseReferences<_$MarketDb, $AgentTradesTable, AgentTrade>,
+          ),
+          AgentTrade,
+          PrefetchHooks Function()
+        > {
+  $$AgentTradesTableTableManager(_$MarketDb db, $AgentTradesTable table)
+    : super(
+        TableManagerState(
+          db: db,
+          table: table,
+          createFilteringComposer: () =>
+              $$AgentTradesTableFilterComposer($db: db, $table: table),
+          createOrderingComposer: () =>
+              $$AgentTradesTableOrderingComposer($db: db, $table: table),
+          createComputedFieldComposer: () =>
+              $$AgentTradesTableAnnotationComposer($db: db, $table: table),
+          updateCompanionCallback:
+              ({
+                Value<int> id = const Value.absent(),
+                Value<String> agent = const Value.absent(),
+                Value<int> instrumentId = const Value.absent(),
+                Value<String> date = const Value.absent(),
+                Value<DateTime> at = const Value.absent(),
+                Value<String> side = const Value.absent(),
+                Value<int> unitsE4 = const Value.absent(),
+                Value<int> priceE4 = const Value.absent(),
+                Value<int> feesPaise = const Value.absent(),
+                Value<String> reason = const Value.absent(),
+              }) => AgentTradesCompanion(
+                id: id,
+                agent: agent,
+                instrumentId: instrumentId,
+                date: date,
+                at: at,
+                side: side,
+                unitsE4: unitsE4,
+                priceE4: priceE4,
+                feesPaise: feesPaise,
+                reason: reason,
+              ),
+          createCompanionCallback:
+              ({
+                Value<int> id = const Value.absent(),
+                required String agent,
+                required int instrumentId,
+                required String date,
+                required DateTime at,
+                required String side,
+                required int unitsE4,
+                required int priceE4,
+                Value<int> feesPaise = const Value.absent(),
+                Value<String> reason = const Value.absent(),
+              }) => AgentTradesCompanion.insert(
+                id: id,
+                agent: agent,
+                instrumentId: instrumentId,
+                date: date,
+                at: at,
+                side: side,
+                unitsE4: unitsE4,
+                priceE4: priceE4,
+                feesPaise: feesPaise,
+                reason: reason,
+              ),
+          withReferenceMapper: (p0) => p0
+              .map(
+                (e) => (
+                  e.readTable<$AgentTradesTable, AgentTrade>(table),
+                  BaseReferences<_$MarketDb, $AgentTradesTable, AgentTrade>(
+                    db,
+                    table,
+                    e,
+                  ),
+                ),
+              )
+              .toList(),
+          prefetchHooksCallback: null,
+        ),
+      );
+}
+
+typedef $$AgentTradesTableProcessedTableManager =
+    ProcessedTableManager<
+      _$MarketDb,
+      $AgentTradesTable,
+      AgentTrade,
+      $$AgentTradesTableFilterComposer,
+      $$AgentTradesTableOrderingComposer,
+      $$AgentTradesTableAnnotationComposer,
+      $$AgentTradesTableCreateCompanionBuilder,
+      $$AgentTradesTableUpdateCompanionBuilder,
+      (AgentTrade, BaseReferences<_$MarketDb, $AgentTradesTable, AgentTrade>),
+      AgentTrade,
+      PrefetchHooks Function()
+    >;
+typedef $$AgentRunsTableCreateCompanionBuilder = AgentRunsCompanion Function({
+  Value<int> id,
+  required String agent,
+  required String date,
+  required DateTime at,
+  required String summary,
+  required int valuePaise,
+  required int cashPaise,
+  Value<bool> ai,
+});
+typedef $$AgentRunsTableUpdateCompanionBuilder = AgentRunsCompanion Function({
+  Value<int> id,
+  Value<String> agent,
+  Value<String> date,
+  Value<DateTime> at,
+  Value<String> summary,
+  Value<int> valuePaise,
+  Value<int> cashPaise,
+  Value<bool> ai,
+});
+
+class $$AgentRunsTableFilterComposer
+    extends Composer<_$MarketDb, $AgentRunsTable> {
+  $$AgentRunsTableFilterComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnFilters<int> get id => $composableBuilder(
+    column: $table.id,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get agent => $composableBuilder(
+    column: $table.agent,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get date => $composableBuilder(
+    column: $table.date,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<DateTime> get at => $composableBuilder(
+    column: $table.at,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get summary => $composableBuilder(
+    column: $table.summary,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get valuePaise => $composableBuilder(
+    column: $table.valuePaise,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get cashPaise => $composableBuilder(
+    column: $table.cashPaise,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<bool> get ai => $composableBuilder(
+    column: $table.ai,
+    builder: (column) => ColumnFilters(column),
+  );
+}
+
+class $$AgentRunsTableOrderingComposer
+    extends Composer<_$MarketDb, $AgentRunsTable> {
+  $$AgentRunsTableOrderingComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnOrderings<int> get id => $composableBuilder(
+    column: $table.id,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get agent => $composableBuilder(
+    column: $table.agent,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get date => $composableBuilder(
+    column: $table.date,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<DateTime> get at => $composableBuilder(
+    column: $table.at,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get summary => $composableBuilder(
+    column: $table.summary,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<int> get valuePaise => $composableBuilder(
+    column: $table.valuePaise,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<int> get cashPaise => $composableBuilder(
+    column: $table.cashPaise,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<bool> get ai => $composableBuilder(
+    column: $table.ai,
+    builder: (column) => ColumnOrderings(column),
+  );
+}
+
+class $$AgentRunsTableAnnotationComposer
+    extends Composer<_$MarketDb, $AgentRunsTable> {
+  $$AgentRunsTableAnnotationComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  GeneratedColumn<int> get id =>
+      $composableBuilder(column: $table.id, builder: (column) => column);
+
+  GeneratedColumn<String> get agent =>
+      $composableBuilder(column: $table.agent, builder: (column) => column);
+
+  GeneratedColumn<String> get date =>
+      $composableBuilder(column: $table.date, builder: (column) => column);
+
+  GeneratedColumn<DateTime> get at =>
+      $composableBuilder(column: $table.at, builder: (column) => column);
+
+  GeneratedColumn<String> get summary =>
+      $composableBuilder(column: $table.summary, builder: (column) => column);
+
+  GeneratedColumn<int> get valuePaise => $composableBuilder(
+    column: $table.valuePaise,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<int> get cashPaise =>
+      $composableBuilder(column: $table.cashPaise, builder: (column) => column);
+
+  GeneratedColumn<bool> get ai =>
+      $composableBuilder(column: $table.ai, builder: (column) => column);
+}
+
+class $$AgentRunsTableTableManager
+    extends
+        RootTableManager<
+          _$MarketDb,
+          $AgentRunsTable,
+          AgentRun,
+          $$AgentRunsTableFilterComposer,
+          $$AgentRunsTableOrderingComposer,
+          $$AgentRunsTableAnnotationComposer,
+          $$AgentRunsTableCreateCompanionBuilder,
+          $$AgentRunsTableUpdateCompanionBuilder,
+          (AgentRun, BaseReferences<_$MarketDb, $AgentRunsTable, AgentRun>),
+          AgentRun,
+          PrefetchHooks Function()
+        > {
+  $$AgentRunsTableTableManager(_$MarketDb db, $AgentRunsTable table)
+    : super(
+        TableManagerState(
+          db: db,
+          table: table,
+          createFilteringComposer: () =>
+              $$AgentRunsTableFilterComposer($db: db, $table: table),
+          createOrderingComposer: () =>
+              $$AgentRunsTableOrderingComposer($db: db, $table: table),
+          createComputedFieldComposer: () =>
+              $$AgentRunsTableAnnotationComposer($db: db, $table: table),
+          updateCompanionCallback:
+              ({
+                Value<int> id = const Value.absent(),
+                Value<String> agent = const Value.absent(),
+                Value<String> date = const Value.absent(),
+                Value<DateTime> at = const Value.absent(),
+                Value<String> summary = const Value.absent(),
+                Value<int> valuePaise = const Value.absent(),
+                Value<int> cashPaise = const Value.absent(),
+                Value<bool> ai = const Value.absent(),
+              }) => AgentRunsCompanion(
+                id: id,
+                agent: agent,
+                date: date,
+                at: at,
+                summary: summary,
+                valuePaise: valuePaise,
+                cashPaise: cashPaise,
+                ai: ai,
+              ),
+          createCompanionCallback:
+              ({
+                Value<int> id = const Value.absent(),
+                required String agent,
+                required String date,
+                required DateTime at,
+                required String summary,
+                required int valuePaise,
+                required int cashPaise,
+                Value<bool> ai = const Value.absent(),
+              }) => AgentRunsCompanion.insert(
+                id: id,
+                agent: agent,
+                date: date,
+                at: at,
+                summary: summary,
+                valuePaise: valuePaise,
+                cashPaise: cashPaise,
+                ai: ai,
+              ),
+          withReferenceMapper: (p0) => p0
+              .map(
+                (e) => (
+                  e.readTable<$AgentRunsTable, AgentRun>(table),
+                  BaseReferences<_$MarketDb, $AgentRunsTable, AgentRun>(
+                    db,
+                    table,
+                    e,
+                  ),
+                ),
+              )
+              .toList(),
+          prefetchHooksCallback: null,
+        ),
+      );
+}
+
+typedef $$AgentRunsTableProcessedTableManager =
+    ProcessedTableManager<
+      _$MarketDb,
+      $AgentRunsTable,
+      AgentRun,
+      $$AgentRunsTableFilterComposer,
+      $$AgentRunsTableOrderingComposer,
+      $$AgentRunsTableAnnotationComposer,
+      $$AgentRunsTableCreateCompanionBuilder,
+      $$AgentRunsTableUpdateCompanionBuilder,
+      (AgentRun, BaseReferences<_$MarketDb, $AgentRunsTable, AgentRun>),
+      AgentRun,
+      PrefetchHooks Function()
+    >;
+typedef $$AgentNotesTableCreateCompanionBuilder = AgentNotesCompanion Function({
+  Value<int> id,
+  required DateTime at,
+  required String body,
+  Value<String?> agent,
+});
+typedef $$AgentNotesTableUpdateCompanionBuilder = AgentNotesCompanion Function({
+  Value<int> id,
+  Value<DateTime> at,
+  Value<String> body,
+  Value<String?> agent,
+});
+
+class $$AgentNotesTableFilterComposer
+    extends Composer<_$MarketDb, $AgentNotesTable> {
+  $$AgentNotesTableFilterComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnFilters<int> get id => $composableBuilder(
+    column: $table.id,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<DateTime> get at => $composableBuilder(
+    column: $table.at,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get body => $composableBuilder(
+    column: $table.body,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get agent => $composableBuilder(
+    column: $table.agent,
+    builder: (column) => ColumnFilters(column),
+  );
+}
+
+class $$AgentNotesTableOrderingComposer
+    extends Composer<_$MarketDb, $AgentNotesTable> {
+  $$AgentNotesTableOrderingComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnOrderings<int> get id => $composableBuilder(
+    column: $table.id,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<DateTime> get at => $composableBuilder(
+    column: $table.at,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get body => $composableBuilder(
+    column: $table.body,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get agent => $composableBuilder(
+    column: $table.agent,
+    builder: (column) => ColumnOrderings(column),
+  );
+}
+
+class $$AgentNotesTableAnnotationComposer
+    extends Composer<_$MarketDb, $AgentNotesTable> {
+  $$AgentNotesTableAnnotationComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  GeneratedColumn<int> get id =>
+      $composableBuilder(column: $table.id, builder: (column) => column);
+
+  GeneratedColumn<DateTime> get at =>
+      $composableBuilder(column: $table.at, builder: (column) => column);
+
+  GeneratedColumn<String> get body =>
+      $composableBuilder(column: $table.body, builder: (column) => column);
+
+  GeneratedColumn<String> get agent =>
+      $composableBuilder(column: $table.agent, builder: (column) => column);
+}
+
+class $$AgentNotesTableTableManager
+    extends
+        RootTableManager<
+          _$MarketDb,
+          $AgentNotesTable,
+          AgentNote,
+          $$AgentNotesTableFilterComposer,
+          $$AgentNotesTableOrderingComposer,
+          $$AgentNotesTableAnnotationComposer,
+          $$AgentNotesTableCreateCompanionBuilder,
+          $$AgentNotesTableUpdateCompanionBuilder,
+          (AgentNote, BaseReferences<_$MarketDb, $AgentNotesTable, AgentNote>),
+          AgentNote,
+          PrefetchHooks Function()
+        > {
+  $$AgentNotesTableTableManager(_$MarketDb db, $AgentNotesTable table)
+    : super(
+        TableManagerState(
+          db: db,
+          table: table,
+          createFilteringComposer: () =>
+              $$AgentNotesTableFilterComposer($db: db, $table: table),
+          createOrderingComposer: () =>
+              $$AgentNotesTableOrderingComposer($db: db, $table: table),
+          createComputedFieldComposer: () =>
+              $$AgentNotesTableAnnotationComposer($db: db, $table: table),
+          updateCompanionCallback: ({
+            Value<int> id = const Value.absent(),
+            Value<DateTime> at = const Value.absent(),
+            Value<String> body = const Value.absent(),
+            Value<String?> agent = const Value.absent(),
+          }) => AgentNotesCompanion(id: id, at: at, body: body, agent: agent),
+          createCompanionCallback:
+              ({
+                Value<int> id = const Value.absent(),
+                required DateTime at,
+                required String body,
+                Value<String?> agent = const Value.absent(),
+              }) => AgentNotesCompanion.insert(
+                id: id,
+                at: at,
+                body: body,
+                agent: agent,
+              ),
+          withReferenceMapper: (p0) => p0
+              .map(
+                (e) => (
+                  e.readTable<$AgentNotesTable, AgentNote>(table),
+                  BaseReferences<_$MarketDb, $AgentNotesTable, AgentNote>(
+                    db,
+                    table,
+                    e,
+                  ),
+                ),
+              )
+              .toList(),
+          prefetchHooksCallback: null,
+        ),
+      );
+}
+
+typedef $$AgentNotesTableProcessedTableManager =
+    ProcessedTableManager<
+      _$MarketDb,
+      $AgentNotesTable,
+      AgentNote,
+      $$AgentNotesTableFilterComposer,
+      $$AgentNotesTableOrderingComposer,
+      $$AgentNotesTableAnnotationComposer,
+      $$AgentNotesTableCreateCompanionBuilder,
+      $$AgentNotesTableUpdateCompanionBuilder,
+      (AgentNote, BaseReferences<_$MarketDb, $AgentNotesTable, AgentNote>),
+      AgentNote,
+      PrefetchHooks Function()
+    >;
 
 class $MarketDbManager {
   final _$MarketDb _db;
@@ -4691,6 +6779,12 @@ class $MarketDbManager {
       $$UniverseTableTableManager(_db, _db.universe);
   $$FundamentalsTableTableManager get fundamentals =>
       $$FundamentalsTableTableManager(_db, _db.fundamentals);
+  $$AgentTradesTableTableManager get agentTrades =>
+      $$AgentTradesTableTableManager(_db, _db.agentTrades);
+  $$AgentRunsTableTableManager get agentRuns =>
+      $$AgentRunsTableTableManager(_db, _db.agentRuns);
+  $$AgentNotesTableTableManager get agentNotes =>
+      $$AgentNotesTableTableManager(_db, _db.agentNotes);
 }
 
 class $GoalsTable extends Goals with TableInfo<$GoalsTable, Goal> {

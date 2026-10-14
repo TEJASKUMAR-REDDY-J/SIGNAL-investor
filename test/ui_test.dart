@@ -74,7 +74,7 @@ void main() {
   }
 
   Widget app([Widget? home]) =>
-      MaterialApp(theme: buildTheme(Brightness.light), home: home ?? Shell(session: session));
+      MaterialApp(theme: buildTheme(Brightness.light), home: home ?? Shell(session: session, initialTab: 1));
 
   Future<int> stock(WidgetTester t, String name, String sym) => q(t, () =>
       market.into(market.instruments).insert(InstrumentsCompanion.insert(kind: 'stock', name: name, nseSymbol: Value(sym))));

@@ -42,6 +42,9 @@ class Session {
   Future<void> Function({bool force})? refresh;
   /// Reloads advisor ideas from the cache (after a scan).
   Future<void> Function()? reloadIdeas;
+  /// Paper agents: progress text while a run is going, and the run trigger.
+  final agentStatus = ValueNotifier<String?>(null);
+  Future<void> Function()? runAgents;
   Session(this.profile, this.db, this.market, this.portfolio, this.lock);
 }
 

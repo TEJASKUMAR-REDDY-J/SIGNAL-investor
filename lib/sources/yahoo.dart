@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'dart:math';
 
 import '../engine/lots.dart';
 import 'net.dart';
@@ -153,4 +154,38 @@ Map<String, num?> parseFundamentals(String body) {
     'low52': raw('summaryDetail', 'fiftyTwoWeekLow'),
     'beta': raw('defaultKeyStatistics', 'beta'),
   };
+}
+
+/// Quote plus recent daily closes (oldest first, paise-rounded) for many tickers,
+/// 20 per request. range: 1mo gives about 21 closes.
+Future<Map<String, (Quote, List<int>)>> yahooSparkHistory(Net n, List<String> tickers, {String range = '1mo'}) async {
+  final ok = [for (final t in tickers) if (RegExp(r'^[\^A-Z0-9&.\-]{1,25}$').hasMatch(t)) t];
+  final out = <String, (Quote, List<int>)>{};
+  for (var i = 0; i < ok.length; i += 20) {
+    final batch = ok.sublist(i, min(i + 20, ok.length));
+    final r = await n.get('yahoo', Uri.https('query1.finance.yahoo.com', '/v7/finance/spark',
+        {'symbols': batch.join(','), 'range': range, 'interval': '1d'}));
+    out.addAll(parseSparkHistory(r.body));
+  }
+  return out;
+}
+
+Map<String, (Quote, List<int>)> parseSparkHistory(String body) {
+  final quotes = {for (final q in parseSpark(body)) q.ticker: q};
+  final j = jsonDecode(body) as Map;
+  final out = <String, (Quote, List<int>)>{};
+  for (final r in ((j['spark'] as Map)['result'] as List)) {
+    if (r is! Map) continue;
+    final q = quotes[r['symbol']];
+    final resp = r['response'];
+    if (q == null || resp is! List || resp.isEmpty) continue;
+    final ind = (resp.first as Map)['indicators'];
+    final quote = ind is Map && ind['quote'] is List && (ind['quote'] as List).isNotEmpty ? (ind['quote'] as List).first : null;
+    final closes = quote is Map && quote['close'] is List ? quote['close'] as List : const [];
+    final cs = [for (final c in closes) if (_paiseE4(c) != null) _paiseE4(c)!];
+    // chartPreviousClose here is the close before the whole range: yesterday is the
+    // second-last close instead.
+    out[q.ticker] = (Quote(q.ticker, q.priceE4, cs.length >= 2 ? cs[cs.length - 2] : q.prevCloseE4, q.timeUtc), cs);
+  }
+  return out;
 }

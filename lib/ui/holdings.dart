@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../engine/lots.dart';
 import '../engine/money.dart';
 import '../engine/portfolio.dart';
+import 'activity.dart';
 import 'holding.dart';
 import 'theme.dart';
 import 'widgets.dart';
@@ -61,6 +62,12 @@ class _HoldingsTabState extends State<HoldingsTab> {
             floating: true,
             title: const Text('Holdings'),
             actions: [
+              IconButton(
+                tooltip: 'All activity',
+                icon: const Icon(Icons.receipt_long_outlined),
+                onPressed: () => Navigator.push(
+                    context, MaterialPageRoute(builder: (_) => Scaffold(body: ActivityTab(session: widget.session)))),
+              ),
               PopupMenuButton<_Sort>(
                 tooltip: 'Sort',
                 icon: const Icon(Icons.sort),
