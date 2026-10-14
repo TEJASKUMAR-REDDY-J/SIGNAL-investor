@@ -239,9 +239,10 @@ AgentDecision? validateDecision(String content, Set<String> buyable, Set<String>
   String reason(Object? r) => r is String && r.trim().isNotEmpty ? r.trim() : '';
   final buys = <(String, int, String)>[];
   for (final b in (j['buys'] is List ? j['buys'] as List : const [])) {
-    if (b is! Map || b['symbol'] is! String || b['rupees'] is! num) continue;
+    final amt = b is Map ? (b['rupees'] is num ? b['rupees'] as num : num.tryParse('${b['rupees']}'.replaceAll(',', ''))) : null;
+    if (b is! Map || b['symbol'] is! String || amt == null) continue;
     final sym = (b['symbol'] as String).toUpperCase().trim();
-    final rs = (b['rupees'] as num).round().clamp(0, maxRupees);
+    final rs = amt.round().clamp(0, maxRupees);
     if (buyable.contains(sym) && rs > 0) buys.add((sym, rs, reason(b['reason'])));
   }
   final sells = <(String, String)>[];
@@ -356,12 +357,18 @@ const _traderSystem =
 
 /// Runs the tool loop; null when the model never submits (the rule plan then stands).
 Future<TraderResult?> agentTrade(Net n, String key, String model, String brief, ToolRunner run,
-    {required Set<String> buyable, required Set<String> held, required int maxRupees, int maxRounds = 7}) async {
+    {required Set<String> buyable,
+    required Set<String> held,
+    required int maxRupees,
+    int maxRounds = 5,
+    Future<void> Function(Duration) sleep = Future.delayed}) async {
   final messages = <Map<String, Object?>>[
     {'role': 'system', 'content': _traderSystem},
     {'role': 'user', 'content': brief},
   ];
   var calls = 0;
+  var waited = Duration.zero;
+  final seen = <String>{}; // name+args already answered: no need to resend the data
   for (var round = 0; round < maxRounds; round++) {
     final last = round == maxRounds - 1;
     if (n.blocked('groq')) throw FetchError('groq', 'rate-limited, backing off');
@@ -370,8 +377,8 @@ Future<TraderResult?> agentTrade(Net n, String key, String model, String brief, 
             headers: {'Authorization': 'Bearer $key', 'Content-Type': 'application/json'},
             body: jsonEncode({
               'model': model,
-              'reasoning_effort': 'medium',
-              'max_completion_tokens': 3000,
+              'reasoning_effort': 'low',
+              'max_completion_tokens': 2500,
               'messages': messages,
               'tools': traderTools,
               // Last round: only the finishing tool.
@@ -383,7 +390,15 @@ Future<TraderResult?> agentTrade(Net n, String key, String model, String brief, 
                   : 'auto',
             }))
         .timeout(const Duration(seconds: 90));
-    if (res.statusCode == 429) throw FetchError('groq', 'rate limit (free tier)');
+    if (res.statusCode == 429) {
+      // Free tier: tokens per minute. Wait as told (up to 90 s in all) and retry the same round.
+      final wait = Duration(seconds: (double.tryParse(res.headers['retry-after'] ?? '') ?? 10).ceil().clamp(1, 30));
+      if (waited + wait > const Duration(seconds: 90)) throw FetchError('groq', 'rate limit (free tier)');
+      waited += wait;
+      await sleep(wait);
+      round--;
+      continue;
+    }
     final j = jsonDecode(utf8.decode(res.bodyBytes)) as Map<String, dynamic>;
     if (res.statusCode == 400 && j['error'] is Map && (j['error'] as Map)['failed_generation'] is String) {
       // The model sometimes emits the decision under a made-up tool name: salvage it.
@@ -394,11 +409,18 @@ Future<TraderResult?> agentTrade(Net n, String key, String model, String brief, 
       messages.add({'role': 'user', 'content': 'Call submit_decision with your final answer.'});
       continue;
     }
-    if (res.statusCode != 200) throw FetchError('groq', 'HTTP ${res.statusCode}');
+    if (res.statusCode != 200) {
+      final err = j['error'] is Map ? (j['error'] as Map)['message'] : null;
+      throw FetchError('groq', 'HTTP ${res.statusCode}${err is String ? ': ${err.length > 160 ? err.substring(0, 160) : err}' : ''}');
+    }
     final msg = ((j['choices'] as List).first as Map).cast<String, dynamic>()['message'] as Map;
     final tcs = (msg['tool_calls'] as List?) ?? const [];
     if (tcs.isEmpty) {
-      messages.add({'role': 'assistant', 'content': msg['content'] ?? ''});
+      final text = (msg['content'] as String?) ?? '';
+      final jm = RegExp(r'\{[\s\S]*\}').firstMatch(text);
+      final r = jm == null ? null : _submitted(jm[0]!, buyable, held, maxRupees, calls);
+      if (r != null) return r; // the decision came back as plain JSON
+      messages.add({'role': 'assistant', 'content': text});
       messages.add({'role': 'user', 'content': 'Call submit_decision now.'});
       continue;
     }
@@ -419,8 +441,11 @@ Future<TraderResult?> agentTrade(Net n, String key, String model, String brief, 
         args = {};
       }
       String out;
+      final sig = '$name ${jsonEncode(args)}';
       try {
-        out = name == 'submit_decision' ? 'Invalid decision JSON; try again.' : await run(name, args);
+        out = name == 'submit_decision'
+            ? 'Invalid decision JSON; try again.'
+            : (seen.add(sig) ? await run(name, args) : 'Already answered above. Use it, check something else, or call submit_decision.');
       } catch (e) {
         out = 'error: $e';
       }
