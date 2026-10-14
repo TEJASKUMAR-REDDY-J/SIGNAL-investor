@@ -125,7 +125,8 @@ class _HoldingsTabState extends State<HoldingsTab> {
                 itemBuilder: (context, i) {
                   final h = list[i];
                   final lt = ltShare(h);
-                  final share = p.investedPaise == 0 ? 0.0 : h.ledger.costPaise / p.investedPaise;
+                  final share = p.valuePaise == 0 ? 0.0 : h.valuePaise / p.valuePaise;
+                  final pct = h.ledger.costPaise == 0 ? 0.0 : h.gainPaise / h.ledger.costPaise;
                   return Card(
                     child: InkWell(
                       onTap: () => Navigator.push(context,
@@ -150,7 +151,14 @@ class _HoldingsTabState extends State<HoldingsTab> {
                               ]),
                             ),
                             const SizedBox(width: 8),
-                            Money(h.ledger.costPaise, style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 16)),
+                            Column(crossAxisAlignment: CrossAxisAlignment.end, children: [
+                              Money(h.valuePaise, style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 16)),
+                              if (h.priced)
+                                Text('${pct >= 0 ? 'up' : 'down'} ${(pct.abs() * 100).toStringAsFixed(1)}%',
+                                    style: TextStyle(fontSize: 12, color: cs.signed(h.gainPaise), fontWeight: FontWeight.w600))
+                              else
+                                Text('at cost', style: TextStyle(fontSize: 12, color: cs.onSurfaceVariant)),
+                            ]),
                           ]),
                           const SizedBox(height: 10),
                           Row(children: [
@@ -163,6 +171,13 @@ class _HoldingsTabState extends State<HoldingsTab> {
                                   style: TextStyle(fontSize: 11.5, color: cs.onSurfaceVariant)),
                             ),
                             if (h.bucket == 'satellite') ...[const SizedBox(width: 8), Pill('Satellite', color: cs.series[2])],
+                            if (h.mismatch || h.stale) ...[
+                              const SizedBox(width: 8),
+                              Tooltip(
+                                message: h.mismatch ? 'Price sources disagree' : 'Price is stale',
+                                child: Icon(h.mismatch ? Icons.compare_arrows : Icons.history, size: 16, color: cs.warn),
+                              ),
+                            ],
                             if (h.ledger.oversold.isNotEmpty) ...[
                               const SizedBox(width: 8),
                               Icon(Icons.error_outline, size: 16, color: cs.loss),

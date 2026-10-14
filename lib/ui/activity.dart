@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 
 import '../db/db.dart';
 import '../engine/lots.dart';
+import '../engine/quick_add.dart';
+import '../sources/rss.dart' show normTitle;
 import 'add_transaction.dart';
 import 'holding.dart';
 import 'theme.dart';
@@ -17,6 +19,36 @@ class ActivityTab extends StatefulWidget {
 class _ActivityTabState extends State<ActivityTab> {
   String _type = 'all';
   String _q = '';
+
+  /// Parsed locally with plain rules; only prefills the form for you to confirm.
+  void _quickAdd(BuildContext context, String text) {
+    final qa = parseQuickAdd(text, istToday());
+    if (qa == null) {
+      snack(context, 'Start with buy, sell, sip or div');
+      return;
+    }
+    final p = widget.session.portfolio.value!;
+    final words = normTitle(qa.query);
+    final hit = words.isEmpty
+        ? null
+        : p.instruments.values.where((i) {
+            final hay = ' ${normTitle('${i.name} ${i.nseSymbol ?? ''} ${i.aliases}')} ';
+            return words.split(' ').every((w) => hay.contains(' $w') || hay.contains(w));
+          }).firstOrNull;
+    if (hit == null && words.isNotEmpty) snack(context, 'No match for "${qa.query}". Pick it in the form.');
+    Navigator.push(
+        context,
+        MaterialPageRoute(
+            builder: (_) => AddTransaction(
+                  session: widget.session,
+                  instrumentId: hit?.id,
+                  type: qa.type,
+                  unitsE4: qa.unitsE4,
+                  priceE4: qa.priceE4,
+                  amountPaise: qa.amountPaise,
+                  date: qa.date,
+                )));
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -46,6 +78,16 @@ class _ActivityTabState extends State<ActivityTab> {
             child: Padding(
               padding: const EdgeInsets.fromLTRB(12, 0, 12, 4),
               child: Column(children: [
+                TextField(
+                  decoration: const InputDecoration(
+                    hintText: 'Type to add: sip 5000 nifty today',
+                    prefixIcon: Icon(Icons.bolt),
+                    helperText: 'buy 10 infy 1520 · sell 5 tcs 3100 yesterday · div 250 itc',
+                  ),
+                  textInputAction: TextInputAction.done,
+                  onSubmitted: (v) => _quickAdd(context, v),
+                ),
+                const SizedBox(height: 10),
                 TextField(
                   decoration: const InputDecoration(hintText: 'Search fund, stock or note', prefixIcon: Icon(Icons.search)),
                   onChanged: (v) => setState(() => _q = v.trim().toLowerCase()),

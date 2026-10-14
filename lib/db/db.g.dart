@@ -4742,8 +4742,37 @@ class $GoalsTable extends Goals with TableInfo<$GoalsTable, Goal> {
     type: DriftSqlType.int,
     requiredDuringInsert: true,
   );
+  static const VerificationMeta _unitNameMeta = const VerificationMeta(
+    'unitName',
+  );
   @override
-  List<GeneratedColumn> get $columns => [id, name, targetDate, targetPaise];
+  late final GeneratedColumn<String> unitName = GeneratedColumn<String>(
+    'unit_name',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _unitPaiseMeta = const VerificationMeta(
+    'unitPaise',
+  );
+  @override
+  late final GeneratedColumn<int> unitPaise = GeneratedColumn<int>(
+    'unit_paise',
+    aliasedName,
+    true,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+  );
+  @override
+  List<GeneratedColumn> get $columns => [
+    id,
+    name,
+    targetDate,
+    targetPaise,
+    unitName,
+    unitPaise,
+  ];
   @override
   String get aliasedName => _alias ?? actualTableName;
   @override
@@ -4786,6 +4815,18 @@ class $GoalsTable extends Goals with TableInfo<$GoalsTable, Goal> {
     } else if (isInserting) {
       context.missing(_targetPaiseMeta);
     }
+    if (data.containsKey('unit_name')) {
+      context.handle(
+        _unitNameMeta,
+        unitName.isAcceptableOrUnknown(data['unit_name']!, _unitNameMeta),
+      );
+    }
+    if (data.containsKey('unit_paise')) {
+      context.handle(
+        _unitPaiseMeta,
+        unitPaise.isAcceptableOrUnknown(data['unit_paise']!, _unitPaiseMeta),
+      );
+    }
     return context;
   }
 
@@ -4811,6 +4852,14 @@ class $GoalsTable extends Goals with TableInfo<$GoalsTable, Goal> {
         DriftSqlType.int,
         data['${effectivePrefix}target_paise'],
       )!,
+      unitName: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}unit_name'],
+      ),
+      unitPaise: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}unit_paise'],
+      ),
     );
   }
 
@@ -4825,11 +4874,15 @@ class Goal extends DataClass implements Insertable<Goal> {
   final String name;
   final String targetDate;
   final int targetPaise;
+  final String? unitName;
+  final int? unitPaise;
   const Goal({
     required this.id,
     required this.name,
     required this.targetDate,
     required this.targetPaise,
+    this.unitName,
+    this.unitPaise,
   });
   @override
   Map<String, Expression> toColumns(bool nullToAbsent) {
@@ -4838,6 +4891,12 @@ class Goal extends DataClass implements Insertable<Goal> {
     map['name'] = Variable<String>(name);
     map['target_date'] = Variable<String>(targetDate);
     map['target_paise'] = Variable<int>(targetPaise);
+    if (!nullToAbsent || unitName != null) {
+      map['unit_name'] = Variable<String>(unitName);
+    }
+    if (!nullToAbsent || unitPaise != null) {
+      map['unit_paise'] = Variable<int>(unitPaise);
+    }
     return map;
   }
 
@@ -4847,6 +4906,12 @@ class Goal extends DataClass implements Insertable<Goal> {
       name: Value(name),
       targetDate: Value(targetDate),
       targetPaise: Value(targetPaise),
+      unitName: unitName == null && nullToAbsent
+          ? const Value.absent()
+          : Value(unitName),
+      unitPaise: unitPaise == null && nullToAbsent
+          ? const Value.absent()
+          : Value(unitPaise),
     );
   }
 
@@ -4860,6 +4925,8 @@ class Goal extends DataClass implements Insertable<Goal> {
       name: serializer.fromJson<String>(json['name']),
       targetDate: serializer.fromJson<String>(json['targetDate']),
       targetPaise: serializer.fromJson<int>(json['targetPaise']),
+      unitName: serializer.fromJson<String?>(json['unitName']),
+      unitPaise: serializer.fromJson<int?>(json['unitPaise']),
     );
   }
   @override
@@ -4870,6 +4937,8 @@ class Goal extends DataClass implements Insertable<Goal> {
       'name': serializer.toJson<String>(name),
       'targetDate': serializer.toJson<String>(targetDate),
       'targetPaise': serializer.toJson<int>(targetPaise),
+      'unitName': serializer.toJson<String?>(unitName),
+      'unitPaise': serializer.toJson<int?>(unitPaise),
     };
   }
 
@@ -4878,11 +4947,15 @@ class Goal extends DataClass implements Insertable<Goal> {
     String? name,
     String? targetDate,
     int? targetPaise,
+    Value<String?> unitName = const Value.absent(),
+    Value<int?> unitPaise = const Value.absent(),
   }) => Goal(
     id: id ?? this.id,
     name: name ?? this.name,
     targetDate: targetDate ?? this.targetDate,
     targetPaise: targetPaise ?? this.targetPaise,
+    unitName: unitName.present ? unitName.value : this.unitName,
+    unitPaise: unitPaise.present ? unitPaise.value : this.unitPaise,
   );
   Goal copyWithCompanion(GoalsCompanion data) {
     return Goal(
@@ -4894,6 +4967,8 @@ class Goal extends DataClass implements Insertable<Goal> {
       targetPaise: data.targetPaise.present
           ? data.targetPaise.value
           : this.targetPaise,
+      unitName: data.unitName.present ? data.unitName.value : this.unitName,
+      unitPaise: data.unitPaise.present ? data.unitPaise.value : this.unitPaise,
     );
   }
 
@@ -4903,13 +4978,16 @@ class Goal extends DataClass implements Insertable<Goal> {
           ..write('id: $id, ')
           ..write('name: $name, ')
           ..write('targetDate: $targetDate, ')
-          ..write('targetPaise: $targetPaise')
+          ..write('targetPaise: $targetPaise, ')
+          ..write('unitName: $unitName, ')
+          ..write('unitPaise: $unitPaise')
           ..write(')'))
         .toString();
   }
 
   @override
-  int get hashCode => Object.hash(id, name, targetDate, targetPaise);
+  int get hashCode =>
+      Object.hash(id, name, targetDate, targetPaise, unitName, unitPaise);
   @override
   bool operator ==(Object other) =>
       identical(this, other) ||
@@ -4917,7 +4995,9 @@ class Goal extends DataClass implements Insertable<Goal> {
           other.id == this.id &&
           other.name == this.name &&
           other.targetDate == this.targetDate &&
-          other.targetPaise == this.targetPaise);
+          other.targetPaise == this.targetPaise &&
+          other.unitName == this.unitName &&
+          other.unitPaise == this.unitPaise);
 }
 
 class GoalsCompanion extends UpdateCompanion<Goal> {
@@ -4925,17 +5005,23 @@ class GoalsCompanion extends UpdateCompanion<Goal> {
   final Value<String> name;
   final Value<String> targetDate;
   final Value<int> targetPaise;
+  final Value<String?> unitName;
+  final Value<int?> unitPaise;
   const GoalsCompanion({
     this.id = const Value.absent(),
     this.name = const Value.absent(),
     this.targetDate = const Value.absent(),
     this.targetPaise = const Value.absent(),
+    this.unitName = const Value.absent(),
+    this.unitPaise = const Value.absent(),
   });
   GoalsCompanion.insert({
     this.id = const Value.absent(),
     required String name,
     required String targetDate,
     required int targetPaise,
+    this.unitName = const Value.absent(),
+    this.unitPaise = const Value.absent(),
   }) : name = Value(name),
        targetDate = Value(targetDate),
        targetPaise = Value(targetPaise);
@@ -4944,12 +5030,16 @@ class GoalsCompanion extends UpdateCompanion<Goal> {
     Expression<String>? name,
     Expression<String>? targetDate,
     Expression<int>? targetPaise,
+    Expression<String>? unitName,
+    Expression<int>? unitPaise,
   }) {
     return RawValuesInsertable({
       if (id != null) 'id': id,
       if (name != null) 'name': name,
       if (targetDate != null) 'target_date': targetDate,
       if (targetPaise != null) 'target_paise': targetPaise,
+      if (unitName != null) 'unit_name': unitName,
+      if (unitPaise != null) 'unit_paise': unitPaise,
     });
   }
 
@@ -4958,12 +5048,16 @@ class GoalsCompanion extends UpdateCompanion<Goal> {
     Value<String>? name,
     Value<String>? targetDate,
     Value<int>? targetPaise,
+    Value<String?>? unitName,
+    Value<int?>? unitPaise,
   }) {
     return GoalsCompanion(
       id: id ?? this.id,
       name: name ?? this.name,
       targetDate: targetDate ?? this.targetDate,
       targetPaise: targetPaise ?? this.targetPaise,
+      unitName: unitName ?? this.unitName,
+      unitPaise: unitPaise ?? this.unitPaise,
     );
   }
 
@@ -4982,6 +5076,12 @@ class GoalsCompanion extends UpdateCompanion<Goal> {
     if (targetPaise.present) {
       map['target_paise'] = Variable<int>(targetPaise.value);
     }
+    if (unitName.present) {
+      map['unit_name'] = Variable<String>(unitName.value);
+    }
+    if (unitPaise.present) {
+      map['unit_paise'] = Variable<int>(unitPaise.value);
+    }
     return map;
   }
 
@@ -4991,7 +5091,9 @@ class GoalsCompanion extends UpdateCompanion<Goal> {
           ..write('id: $id, ')
           ..write('name: $name, ')
           ..write('targetDate: $targetDate, ')
-          ..write('targetPaise: $targetPaise')
+          ..write('targetPaise: $targetPaise, ')
+          ..write('unitName: $unitName, ')
+          ..write('unitPaise: $unitPaise')
           ..write(')'))
         .toString();
   }
@@ -8201,12 +8303,16 @@ typedef $$GoalsTableCreateCompanionBuilder = GoalsCompanion Function({
   required String name,
   required String targetDate,
   required int targetPaise,
+  Value<String?> unitName,
+  Value<int?> unitPaise,
 });
 typedef $$GoalsTableUpdateCompanionBuilder = GoalsCompanion Function({
   Value<int> id,
   Value<String> name,
   Value<String> targetDate,
   Value<int> targetPaise,
+  Value<String?> unitName,
+  Value<int?> unitPaise,
 });
 
 class $$GoalsTableFilterComposer extends Composer<_$ProfileDb, $GoalsTable> {
@@ -8234,6 +8340,16 @@ class $$GoalsTableFilterComposer extends Composer<_$ProfileDb, $GoalsTable> {
 
   ColumnFilters<int> get targetPaise => $composableBuilder(
     column: $table.targetPaise,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get unitName => $composableBuilder(
+    column: $table.unitName,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get unitPaise => $composableBuilder(
+    column: $table.unitPaise,
     builder: (column) => ColumnFilters(column),
   );
 }
@@ -8265,6 +8381,16 @@ class $$GoalsTableOrderingComposer extends Composer<_$ProfileDb, $GoalsTable> {
     column: $table.targetPaise,
     builder: (column) => ColumnOrderings(column),
   );
+
+  ColumnOrderings<String> get unitName => $composableBuilder(
+    column: $table.unitName,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<int> get unitPaise => $composableBuilder(
+    column: $table.unitPaise,
+    builder: (column) => ColumnOrderings(column),
+  );
 }
 
 class $$GoalsTableAnnotationComposer
@@ -8291,6 +8417,12 @@ class $$GoalsTableAnnotationComposer
     column: $table.targetPaise,
     builder: (column) => column,
   );
+
+  GeneratedColumn<String> get unitName =>
+      $composableBuilder(column: $table.unitName, builder: (column) => column);
+
+  GeneratedColumn<int> get unitPaise =>
+      $composableBuilder(column: $table.unitPaise, builder: (column) => column);
 }
 
 class $$GoalsTableTableManager
@@ -8325,11 +8457,15 @@ class $$GoalsTableTableManager
                 Value<String> name = const Value.absent(),
                 Value<String> targetDate = const Value.absent(),
                 Value<int> targetPaise = const Value.absent(),
+                Value<String?> unitName = const Value.absent(),
+                Value<int?> unitPaise = const Value.absent(),
               }) => GoalsCompanion(
                 id: id,
                 name: name,
                 targetDate: targetDate,
                 targetPaise: targetPaise,
+                unitName: unitName,
+                unitPaise: unitPaise,
               ),
           createCompanionCallback:
               ({
@@ -8337,11 +8473,15 @@ class $$GoalsTableTableManager
                 required String name,
                 required String targetDate,
                 required int targetPaise,
+                Value<String?> unitName = const Value.absent(),
+                Value<int?> unitPaise = const Value.absent(),
               }) => GoalsCompanion.insert(
                 id: id,
                 name: name,
                 targetDate: targetDate,
                 targetPaise: targetPaise,
+                unitName: unitName,
+                unitPaise: unitPaise,
               ),
           withReferenceMapper: (p0) => p0
               .map(

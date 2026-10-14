@@ -108,8 +108,9 @@ const tabular = [FontFeature.tabularFigures()];
 
 extension AppColors on ColorScheme {
   bool get isDark => brightness == Brightness.dark;
-  Color get gain => isDark ? const Color(0xFF4ADE80) : const Color(0xFF15803D);
-  Color get loss => isDark ? const Color(0xFFF87171) : const Color(0xFFB91C1C);
+  // Blue/orange (plus words like "up"/"down"), not red/green: calmer and colour-blind safe.
+  Color get gain => isDark ? const Color(0xFF60A5FA) : const Color(0xFF1D4ED8);
+  Color get loss => isDark ? const Color(0xFFFB923C) : const Color(0xFFC2410C);
   Color get warn => isDark ? const Color(0xFFFBBF24) : const Color(0xFFB45309);
   Color signed(int v) => v > 0 ? gain : (v < 0 ? loss : onSurfaceVariant);
 

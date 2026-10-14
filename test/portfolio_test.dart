@@ -158,6 +158,7 @@ void main() {
       ..execute('DROP TABLE holding_prefs; DROP TABLE profile_settings; DROP TABLE paper_trades; '
           'ALTER TABLE transactions DROP COLUMN stt_paise; ALTER TABLE theses DROP COLUMN broken; '
           'ALTER TABLE signals DROP COLUMN acted_at; ALTER TABLE signals DROP COLUMN note; '
+          'ALTER TABLE goals DROP COLUMN unit_name; ALTER TABLE goals DROP COLUMN unit_paise; '
           'PRAGMA user_version = 1;');
     raw.close();
     db = ProfileDb(openEncrypted(f, key));

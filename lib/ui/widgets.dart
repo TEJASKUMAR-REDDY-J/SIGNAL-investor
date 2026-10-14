@@ -5,7 +5,9 @@ import 'package:flutter/material.dart';
 import '../db/db.dart';
 import '../db/open_db.dart';
 import '../engine/money.dart';
+import '../engine/lots.dart';
 import '../engine/portfolio.dart';
+import '../engine/sell_rules.dart';
 import '../pipeline/refresh.dart';
 import 'theme.dart';
 
@@ -19,6 +21,12 @@ class Session {
   final refreshing = ValueNotifier(false);
   final receipt = ValueNotifier<List<ReceiptLine>?>(null);
   final lastRefresh = ValueNotifier<DateTime?>(null);
+  final suggestions = ValueNotifier<List<SellSuggestion>>(const []);
+  final openSignals = ValueNotifier<List<Signal>>(const []);
+  final theses = ValueNotifier<Map<int, Thesis>>(const {});
+  final filings = ValueNotifier<Map<int, List<Filing>>>(const {});
+  /// Lots that turned long-term since the last visit: (holding name, lot).
+  final ripened = ValueNotifier<List<(String, Lot)>>(const []);
   Future<void> Function({bool force})? refresh;
   Session(this.profile, this.db, this.market, this.portfolio, this.lock);
 }

@@ -144,6 +144,9 @@ class Goals extends Table {
   TextColumn get name => text()();
   TextColumn get targetDate => text()();
   IntColumn get targetPaise => integer()();
+  // Show amounts in the goal's own terms, e.g. "month abroad" = Rs 1,20,000.
+  TextColumn get unitName => text().nullable()();
+  IntColumn get unitPaise => integer().nullable()();
 }
 
 class Transactions extends Table {
@@ -248,6 +251,8 @@ class ProfileDb extends _$ProfileDb {
             await m.addColumn(signals, signals.actedAt);
             await m.addColumn(signals, signals.note);
             await m.createTable(paperTrades);
+            await m.addColumn(goals, goals.unitName);
+            await m.addColumn(goals, goals.unitPaise);
           }
         },
       );
@@ -273,6 +278,9 @@ class ProfileDb extends _$ProfileDb {
 
   Future<void> deleteTx(int id) => audited('delete', 'transaction $id',
       () => (delete(transactions)..where((t) => t.id.equals(id))).go());
+
+  /// Undo of a delete: same row, same id.
+  Future<void> restoreTx(Transaction t) => audited('restore', 'transaction ${t.id}', () => into(transactions).insert(t));
 
   Stream<List<Transaction>> watchTxs([int? instrumentId]) {
     final q = select(transactions)

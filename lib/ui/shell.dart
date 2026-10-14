@@ -4,9 +4,18 @@ import 'package:flutter/material.dart';
 
 import '../db/db.dart';
 import '../engine/calendar.dart';
+import 'package:flutter/services.dart';
+
+import '../engine/lots.dart';
 import '../engine/portfolio.dart';
+import '../engine/sell_rules.dart';
 import '../engine/valuation.dart';
+import '../pipeline/feeds.dart';
 import '../pipeline/refresh.dart';
+import '../sources/groq.dart';
+import 'ask.dart';
+import 'lab.dart';
+import 'sandbox.dart';
 import '../sources/net.dart';
 import 'activity.dart';
 import 'add_transaction.dart';
@@ -29,8 +38,25 @@ class _ShellState extends State<Shell> with WidgetsBindingObserver {
   List<Price> _prices = const [];
   Timer? _debounce;
   bool _refreshedOnce = false;
+  int _satTarget = 25;
   late final _net = Net();
-  late final _refresher = Refresher(s.market, _net);
+  Set<int> _paper = const {};
+  late final _refresher = Refresher(s.market, _net, extra: [
+    filingsStep(s.market, _net, _held),
+    newsStep(s.market, _net, _held, _groq),
+  ]);
+
+  /// Real holdings plus sandbox positions: everything whose prices we keep fresh.
+  Set<int> _held() => {
+        for (final h in s.portfolio.value?.holdings ?? const <Holding>[]) h.instrumentId,
+        ..._paper,
+      };
+
+  Future<(String, String)?> _groq() async {
+    final key = await groqKeyFor(s.profile.id);
+    if (key == null) return null;
+    return (key, await s.db.setting('groq_tag_model') ?? defaultTagModel);
+  }
   final _subs = <StreamSubscription>[];
   List<Transaction>? _txs;
   List<Instrument>? _inst;
@@ -52,6 +78,18 @@ class _ShellState extends State<Shell> with WidgetsBindingObserver {
       (m.select(m.fetchLog)..where((f) => f.source.equals('full'))).watchSingleOrNull()
           .listen((f) => s.lastRefresh.value = f?.lastOkAt),
       db.watchTxs().listen((v) => _set(() => _txs = v)),
+      db.select(db.paperTrades).watch().listen((v) => _paper = paperHeld(v)),
+      db.select(db.theses).watch().listen((v) => _set(() => s.theses.value = {for (final t in v) t.instrumentId: t})),
+      (db.select(db.signals)..where((x) => x.status.equals('open'))).watch().listen((v) => s.openSignals.value = v),
+      m.select(m.filings).watch().listen((v) {
+        final by = <int, List<Filing>>{};
+        for (final f in v) {
+          (by[f.instrumentId] ??= []).add(f);
+        }
+        _set(() => s.filings.value = by);
+      }),
+      (db.select(db.profileSettings)..where((x) => x.key.equals('satellite_target_pct'))).watchSingleOrNull().listen(
+          (v) => _set(() => _satTarget = int.tryParse(v?.value ?? '') ?? 25)),
       m.select(m.instruments).watch().listen((v) => _set(() => _inst = v)),
       db.select(db.holdingPrefs).watch().listen((v) => _set(() => _prefs = v)),
       db.select(db.goals).watch().listen((v) => _set(() => _goals = v)),
@@ -74,20 +112,51 @@ class _ShellState extends State<Shell> with WidgetsBindingObserver {
       book.add(p.instrumentId, p.source, p.date, p.closeE4);
     }
     book.seal();
-    s.portfolio.value =
+    final p =
         Portfolio.compute(txs: _txs!, instruments: _inst!, prefs: _prefs, goals: _goals, sips: _sips, book: book);
+    s.portfolio.value = p;
+    final sug = sellRules(p: p, theses: s.theses.value, filings: s.filings.value, satelliteTargetPct: _satTarget);
+    s.suggestions.value = sug;
+    _storeSignals(sug);
     if (!_refreshedOnce) {
       _refreshedOnce = true;
+      _ripeCheck(p);
       _refresh();
     }
+  }
+
+  /// Every suggestion is stored with its inputs and rule version (signal log).
+  Future<void> _storeSignals(List<SellSuggestion> sug) async {
+    for (final x in sug) {
+      await s.db.upsertSignal(x.instrumentId, x.rule, x.inputsJson, sellRuleVersion);
+    }
+    await s.db.closeSignalsExcept({for (final x in sug) (x.instrumentId, x.rule)}, {1, 2, 3, 4, 5});
+  }
+
+  /// Soft tap + card the first time the app opens after a lot turns long-term.
+  Future<void> _ripeCheck(Portfolio p) async {
+    final last = await s.db.setting('last_open_day');
+    final today = fmtDay(p.today);
+    if (last != null && last != today) {
+      final from = parseDay(last);
+      final ripe = [
+        for (final h in p.holdings)
+          for (final l in h.ledger.open)
+            if (l.longTermDate.isAfter(from) && !l.longTermDate.isAfter(p.today)) (h.name, l),
+      ];
+      if (ripe.isNotEmpty) {
+        s.ripened.value = ripe;
+        HapticFeedback.lightImpact();
+      }
+    }
+    if (last != today) await s.db.setSetting('last_open_day', today);
   }
 
   Future<void> _refresh({bool force = false}) async {
     if (s.refreshing.value) return;
     s.refreshing.value = true;
     try {
-      final held = {for (final h in s.portfolio.value?.holdings ?? const <Holding>[]) h.instrumentId};
-      final lines = await _refresher.run(held, force: force);
+      final lines = await _refresher.run(_held(), force: force);
       if (force || lines.isNotEmpty) s.receipt.value = lines;
     } finally {
       if (mounted) s.refreshing.value = false;
@@ -118,10 +187,11 @@ class _ShellState extends State<Shell> with WidgetsBindingObserver {
       HoldingsTab(session: s),
       ActivityTab(session: s),
       PlanTab(session: s),
+      LabTab(session: s),
     ];
     return Scaffold(
       body: IndexedStack(index: _tab, children: pages),
-      floatingActionButton: _tab == 3
+      floatingActionButton: _tab >= 3
           ? null
           : FloatingActionButton.extended(
               heroTag: 'add',
@@ -137,6 +207,7 @@ class _ShellState extends State<Shell> with WidgetsBindingObserver {
           NavigationDestination(icon: Icon(Icons.pie_chart_outline), selectedIcon: Icon(Icons.pie_chart), label: 'Holdings'),
           NavigationDestination(icon: Icon(Icons.receipt_long_outlined), selectedIcon: Icon(Icons.receipt_long), label: 'Activity'),
           NavigationDestination(icon: Icon(Icons.flag_outlined), selectedIcon: Icon(Icons.flag), label: 'Plan'),
+          NavigationDestination(icon: Icon(Icons.science_outlined), selectedIcon: Icon(Icons.science), label: 'Lab'),
         ],
       ),
     );

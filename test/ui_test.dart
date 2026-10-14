@@ -79,7 +79,7 @@ void main() {
     tall(t);
     await t.pumpWidget(app());
     await settle(t);
-    expect(find.text('Start your ledger'), findsOneWidget);
+    expect(find.text('Nothing here yet'), findsOneWidget);
 
     await t.tap(find.text('Add'));
     await settle(t);
@@ -136,14 +136,20 @@ void main() {
     await settle(t);
     expect(find.textContaining('12 units'), findsWidgets);
 
-    // Delete.
+    // Delete shows Undo (no "are you sure?"); Undo restores the same row.
     await t.tap(find.byTooltip('Delete'));
     await settle(t);
-    await t.tap(find.widgetWithText(FilledButton, 'Delete'));
+    expect(find.text('No open lots.'), findsOneWidget);
+    await t.tap(find.text('Undo'));
     await settle(t);
+    expect(find.text('No open lots.'), findsNothing);
+    expect(await q(t, () => db.select(db.transactions).get()), hasLength(1));
+    await t.tap(find.byTooltip('Delete'));
+    await settle(t, 120); // let the snackbar expire
     expect(find.text('No open lots.'), findsOneWidget);
     final audit = await q(t, () => db.select(db.auditLog).get());
-    expect(audit.map((a) => a.action), ['insert', 'edit', 'delete']);
+    expect(audit.where((a) => a.detail.startsWith('transaction')).map((a) => a.action),
+        ['insert', 'edit', 'delete', 'restore', 'delete']);
     await close(t);
   });
 
@@ -188,7 +194,7 @@ void main() {
     await t.longPress(find.text('ALLOCATION'));
     await settle(t);
     expect(t.getSize(tile).width, greaterThan(w1 * 1.8));
-    expect(await q(t, () => storage.read(key: 'layout2_p1')), contains('"alloc":2'));
+    expect(await q(t, () => storage.read(key: 'layout3_p1')), contains('"alloc":2'));
 
     await t.tap(find.byTooltip('Customize home'));
     await settle(t);
@@ -198,7 +204,7 @@ void main() {
     await t.tapAt(const Offset(200, 40)); // dismiss sheet
     await settle(t);
     expect(find.byKey(const ValueKey('tile-alloc')), findsNothing);
-    expect(await q(t, () => storage.read(key: 'layout2_p1')), contains('"hidden":["alloc"]'));
+    expect(await q(t, () => storage.read(key: 'layout3_p1')), contains('"hidden":["alloc"]'));
     await close(t);
   });
 

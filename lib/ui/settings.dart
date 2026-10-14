@@ -1,10 +1,15 @@
 import 'package:flutter/material.dart';
+import 'package:http/http.dart' as http;
 
 import '../engine/calendar.dart';
 import '../engine/money.dart';
 import '../engine/tax.dart';
+import '../db/open_db.dart';
+import '../sources/groq.dart';
+import 'ask.dart';
 import 'theme.dart';
 import 'widgets.dart';
+import 'wrapped.dart';
 
 const disclaimer =
     'Personal decision aid only. Not investment, tax or legal advice; the authors are not SEBI-registered '
@@ -100,6 +105,22 @@ class _SettingsScreenState extends State<SettingsScreen> {
               ),
             ),
           ),
+          const SectionHeader('AI (Groq)'),
+          _GroqCard(session: widget.session),
+          const SectionHeader('Look back'),
+          Card(
+            child: ListTile(
+              leading: const Icon(Icons.auto_awesome),
+              title: const Text('Financial-year Wrapped'),
+              subtitle: const Text('Once a year: discipline, tax saved by waiting, you vs the index'),
+              trailing: const Icon(Icons.chevron_right),
+              onTap: () {
+                final p = widget.session.portfolio.value;
+                if (p == null) return;
+                Navigator.push(context, MaterialPageRoute(builder: (_) => WrappedScreen(p: p, fy: p.fy - 1)));
+              },
+            ),
+          ),
           const SectionHeader('Security'),
           Card(
             child: Column(
@@ -160,6 +181,136 @@ class _SettingsScreenState extends State<SettingsScreen> {
             ),
           ),
         ],
+      ),
+    );
+  }
+}
+
+
+class _GroqCard extends StatefulWidget {
+  final Session session;
+  const _GroqCard({required this.session});
+  @override
+  State<_GroqCard> createState() => _GroqCardState();
+}
+
+class _GroqCardState extends State<_GroqCard> {
+  final _key = TextEditingController();
+  List<String>? _models;
+  String? _status, _tag, _ask;
+  bool _hasOwn = false, _busy = false;
+
+  String get _store => 'groq_${widget.session.profile.id}';
+
+  @override
+  void initState() {
+    super.initState();
+    () async {
+      final own = await storage.read(key: _store);
+      final tag = await widget.session.db.setting('groq_tag_model');
+      final askM = await widget.session.db.setting('groq_ask_model');
+      if (!mounted) return;
+      setState(() {
+        _hasOwn = cleanKey(own) != null;
+        _tag = tag ?? defaultTagModel;
+        _ask = askM ?? defaultAskModel;
+        _status = _hasOwn ? 'Using this profile\'s key' : (envKey() != null ? 'Using the key built in from .env' : 'No key yet');
+      });
+    }();
+  }
+
+  @override
+  void dispose() {
+    _key.dispose();
+    super.dispose();
+  }
+
+  Future<void> _check([String? fresh]) async {
+    final k = cleanKey(fresh) ?? await groqKeyFor(widget.session.profile.id);
+    if (k == null) return setState(() => _status = 'No key yet');
+    setState(() => _busy = true);
+    try {
+      final m = await listModels(http.Client(), k);
+      if (fresh != null) {
+        await storage.write(key: _store, value: k);
+        _key.clear();
+        _hasOwn = true;
+      }
+      setState(() {
+        _models = m;
+        _status = 'Key works · ${m.length} models';
+      });
+    } catch (e) {
+      setState(() => _status = e.toString().replaceFirst('groq: ', ''));
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    Widget picker(String label, String? value, String setting, void Function(String) set) => DropdownButtonFormField<String>(
+          initialValue: _models!.contains(value) ? value : null,
+          isExpanded: true,
+          decoration: InputDecoration(labelText: label),
+          items: [for (final m in _models!) DropdownMenuItem(value: m, child: Text(m, overflow: TextOverflow.ellipsis))],
+          onChanged: (v) {
+            if (v == null) return;
+            set(v);
+            widget.session.db.setSetting(setting, v);
+          },
+        );
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(14),
+        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Row(children: [
+            Icon(Icons.key, color: cs.primary),
+            const SizedBox(width: 8),
+            Expanded(child: Text(_status ?? '…')),
+            if (_busy) const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2)),
+          ]),
+          const SizedBox(height: 10),
+          TextField(
+            controller: _key,
+            obscureText: true,
+            enableSuggestions: false,
+            autocorrect: false,
+            decoration: InputDecoration(
+              labelText: _hasOwn ? 'Replace this profile\'s key' : 'Paste a Groq API key for this profile',
+              suffixIcon: IconButton(icon: const Icon(Icons.check), onPressed: () => _check(_key.text)),
+            ),
+            onSubmitted: _check,
+          ),
+          const SizedBox(height: 8),
+          Wrap(spacing: 8, children: [
+            OutlinedButton(onPressed: _busy ? null : () => _check(), child: const Text('Test key and load models')),
+            if (_hasOwn)
+              TextButton(
+                onPressed: () async {
+                  await storage.delete(key: _store);
+                  setState(() {
+                    _hasOwn = false;
+                    _status = envKey() != null ? 'Using the key built in from .env' : 'No key yet';
+                  });
+                },
+                child: const Text('Remove key'),
+              ),
+          ]),
+          if (_models != null) ...[
+            const SizedBox(height: 12),
+            picker('Model for news tagging (small, fast)', _tag, 'groq_tag_model', (v) => _tag = v),
+            const SizedBox(height: 12),
+            picker('Model for Ask', _ask, 'groq_ask_model', (v) => _ask = v),
+          ],
+          const SizedBox(height: 8),
+          Text(
+            'The key is stored encrypted on this phone. Only headlines, publishers, times, company names and your '
+            'questions (with amounts removed) are sent. Never holdings, units or prices you paid.',
+            style: TextStyle(fontSize: 12, color: cs.onSurfaceVariant),
+          ),
+        ]),
       ),
     );
   }

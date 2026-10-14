@@ -85,6 +85,11 @@ class _GoalCard extends StatelessWidget {
               const SizedBox(height: 6),
               Text('${rupees(g.taggedPaise, decimals: false)} of ${rupees(g.goal.targetPaise, decimals: false)} (at cost)',
                   style: const TextStyle(fontFeatures: tabular)),
+              if (g.goal.unitPaise != null && g.goal.unitPaise! > 0)
+                Text(
+                    '= ${(g.taggedPaise / g.goal.unitPaise!).toStringAsFixed(1)} of ${(g.goal.targetPaise / g.goal.unitPaise!).toStringAsFixed(0)} '
+                    '${g.goal.unitName ?? 'units'}',
+                    style: TextStyle(color: cs.primary, fontWeight: FontWeight.w600)),
               if (g.equityTooClose) ...[
                 const SizedBox(height: 10),
                 Notice(
@@ -160,6 +165,8 @@ class _SipCard extends StatelessWidget {
 Future<void> editGoal(BuildContext context, Session s, [Goal? g]) async {
   final name = TextEditingController(text: g?.name ?? '');
   final amount = TextEditingController(text: g == null ? '' : formatScaled(g.targetPaise, 2));
+  final unitName = TextEditingController(text: g?.unitName ?? '');
+  final unitAmt = TextEditingController(text: g?.unitPaise == null ? '' : formatScaled(g!.unitPaise!, 2));
   var date = g == null ? DateTime.utc(istToday().year + 3, istToday().month, 1) : parseDay(g.targetDate);
   final form = GlobalKey<FormState>();
   final res = await showModalBottomSheet<String>(
@@ -185,7 +192,25 @@ Future<void> editGoal(BuildContext context, Session s, [Goal? g]) async {
               decoration: const InputDecoration(labelText: 'Target amount', prefixText: '₹ '),
               validator: (v) => (parseScaled(v ?? '', 2) ?? 0) > 0 ? null : 'Enter an amount',
             ),
-            const SizedBox(height: 8),
+            const SizedBox(height: 12),
+            Row(children: [
+              Expanded(
+                child: TextFormField(
+                  controller: unitName,
+                  maxLength: 30,
+                  decoration: const InputDecoration(labelText: 'Goal unit (optional)', hintText: 'month abroad'),
+                ),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: TextFormField(
+                  controller: unitAmt,
+                  keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                  decoration: const InputDecoration(labelText: 'One unit costs', prefixText: '₹ '),
+                  validator: (v) => (v ?? '').trim().isEmpty || (parseScaled(v!, 2) ?? 0) > 0 ? null : 'Amount',
+                ),
+              ),
+            ]),
             ListTile(
               contentPadding: EdgeInsets.zero,
               leading: const Icon(Icons.event),
@@ -219,6 +244,8 @@ Future<void> editGoal(BuildContext context, Session s, [Goal? g]) async {
       name: Value(name.text.trim()),
       targetDate: Value(fmtDay(date)),
       targetPaise: Value(parseScaled(amount.text, 2)!),
+      unitName: Value(unitName.text.trim().isEmpty ? null : unitName.text.trim()),
+      unitPaise: Value(unitAmt.text.trim().isEmpty ? null : parseScaled(unitAmt.text, 2)),
     ));
   } else if (res == 'delete' && context.mounted &&
       await confirm(context, 'Delete goal?', 'Transactions tagged to "${g!.name}" stay, just untagged.')) {

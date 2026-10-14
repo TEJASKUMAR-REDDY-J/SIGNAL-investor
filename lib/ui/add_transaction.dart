@@ -17,7 +17,22 @@ class AddTransaction extends StatefulWidget {
   final int? instrumentId;
   final SipPlan? sipPlan;
   final DateTime? date;
-  const AddTransaction({super.key, required this.session, this.existing, this.instrumentId, this.sipPlan, this.date});
+  // Prefill from a sell decision or the type-to-add bar.
+  final TxType? type;
+  final int? unitsE4;
+  final int? priceE4;
+  final int? amountPaise;
+  const AddTransaction(
+      {super.key,
+      required this.session,
+      this.existing,
+      this.instrumentId,
+      this.sipPlan,
+      this.date,
+      this.type,
+      this.unitsE4,
+      this.priceE4,
+      this.amountPaise});
   @override
   State<AddTransaction> createState() => _AddTransactionState();
 }
@@ -26,14 +41,22 @@ class _AddTransactionState extends State<AddTransaction> {
   final _form = GlobalKey<FormState>();
   late final _e = widget.existing;
   late int? _inst = _e?.instrumentId ?? widget.sipPlan?.instrumentId ?? widget.instrumentId;
-  late TxType _type = _e != null ? TxType.values.byName(_e.type) : (widget.sipPlan != null ? TxType.sip : TxType.buy);
+  late TxType _type = _e != null
+      ? TxType.values.byName(_e.type)
+      : (widget.type ?? (widget.sipPlan != null ? TxType.sip : TxType.buy));
   late DateTime _date = _e != null ? parseDay(_e.date) : _initialDate();
   late int? _goal = _e?.goalId;
   bool _byAmount = false;
-  late final _units = TextEditingController(text: _e == null || _e.unitsE4 == 0 ? '' : formatScaled(_e.unitsE4, 4));
-  late final _price = TextEditingController(text: _e == null ? '' : formatScaled(_e.priceE4, 4));
+  late final _units = TextEditingController(
+      text: _e != null
+          ? (_e.unitsE4 == 0 ? '' : formatScaled(_e.unitsE4, 4))
+          : (widget.unitsE4 == null ? '' : formatScaled(widget.unitsE4!, 4)));
+  late final _price = TextEditingController(
+      text: _e != null ? formatScaled(_e.priceE4, 4) : (widget.priceE4 == null ? '' : formatScaled(widget.priceE4!, 4)));
   late final _amount = TextEditingController(
-      text: widget.sipPlan == null ? '' : formatScaled(widget.sipPlan!.amountPaise, 2));
+      text: widget.sipPlan != null
+          ? formatScaled(widget.sipPlan!.amountPaise, 2)
+          : (widget.amountPaise == null ? '' : formatScaled(widget.amountPaise!, 2)));
   late final _fees = TextEditingController(text: _e == null || _e.feesPaise == 0 ? '' : formatScaled(_e.feesPaise, 2));
   late final _note = TextEditingController(text: _e?.note ?? '');
   late final _stt = TextEditingController(text: _e == null || _e.sttPaise == 0 ? '' : formatScaled(_e.sttPaise, 2));
@@ -52,7 +75,11 @@ class _AddTransactionState extends State<AddTransaction> {
   @override
   void initState() {
     super.initState();
-    _byAmount = widget.sipPlan != null;
+    _byAmount = widget.sipPlan != null || (widget.amountPaise != null && widget.type != TxType.dividend);
+    // Dividend amount lives in the price field.
+    if (widget.type == TxType.dividend && widget.amountPaise != null) {
+      _price.text = formatScaled(widget.amountPaise!, 2);
+    }
   }
 
   @override

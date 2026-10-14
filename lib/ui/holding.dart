@@ -1,12 +1,16 @@
 import 'package:drift/drift.dart' show Value;
+import 'package:fl_chart/fl_chart.dart';
 import 'package:flutter/material.dart';
 
 import '../db/db.dart';
 import '../engine/lots.dart';
 import '../engine/money.dart';
 import '../engine/portfolio.dart';
-import '../engine/tax.dart';
+import '../engine/valuation.dart';
 import 'add_transaction.dart';
+import 'news.dart';
+import 'patience.dart';
+import 'sell_flow.dart';
 import 'theme.dart';
 import 'widgets.dart';
 
@@ -22,10 +26,11 @@ class HoldingScreen extends StatelessWidget {
         valueListenable: session.portfolio,
         builder: (context, p, _) {
           if (p == null) return const Scaffold(body: Center(child: CircularProgressIndicator()));
+          final cs = Theme.of(context).colorScheme;
           final inst = p.instruments[instrumentId];
           final ledger = p.ledgers[instrumentId] ?? fifo(const []);
           final rows = p.txs.where((t) => t.instrumentId == instrumentId).toList().reversed.toList();
-          final bucket = p.holdings.where((h) => h.instrumentId == instrumentId).firstOrNull?.bucket ?? 'core';
+          final h = p.holdings.where((h) => h.instrumentId == instrumentId).firstOrNull;
           return Scaffold(
             appBar: AppBar(
               title: Text(inst?.name ?? 'Holding', overflow: TextOverflow.ellipsis),
@@ -40,26 +45,42 @@ class HoldingScreen extends StatelessWidget {
             ),
             floatingActionButton: FloatingActionButton.extended(
               heroTag: 'add-h',
-              onPressed: () => Navigator.push(context,
-                  MaterialPageRoute(builder: (_) => AddTransaction(session: session, instrumentId: instrumentId))),
+              onPressed: () => Navigator.push(
+                  context, MaterialPageRoute(builder: (_) => AddTransaction(session: session, instrumentId: instrumentId))),
               icon: const Icon(Icons.add),
               label: const Text('Add'),
             ),
             body: ListView(padding: const EdgeInsets.fromLTRB(12, 4, 12, 100), children: [
-              _header(context, p, inst, ledger, bucket),
+              _header(context, p, inst, ledger, h),
               if (ledger.oversold.isNotEmpty) ...[
                 const SizedBox(height: 8),
-                Notice(
-                    icon: Icons.error_outline,
-                    color: Theme.of(context).colorScheme.loss,
-                    text: 'A sell exceeds units held. Fix the dates or units below.'),
+                Notice(icon: Icons.error_outline, color: cs.loss, text: 'A sell exceeds units held. Fix the dates or units below.'),
+              ],
+              if (p.book.series(instrumentId).length > 5) ...[
+                const SectionHeader('Price, 1 year'),
+                Card(child: Padding(padding: const EdgeInsets.fromLTRB(8, 16, 16, 8), child: _PriceChart(p: p, id: instrumentId))),
               ],
               _ThesisCard(db: db, instrumentId: instrumentId),
+              if (ledger.open.isNotEmpty) ...[
+                const SectionHeader('Your lots, ripening'),
+                Card(
+                  child: Padding(
+                    padding: const EdgeInsets.all(16),
+                    child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                      Orchard(lots: ledger.open, today: p.today),
+                      const SizedBox(height: 10),
+                      Text('A lot ripens 12 months and a day after you buy it. Ripe lots are long-term and cheaper to sell.',
+                          style: TextStyle(fontSize: 12, color: cs.onSurfaceVariant)),
+                    ]),
+                  ),
+                ),
+              ],
               SectionHeader('Open lots', trailing: Text('FIFO', style: Theme.of(context).textTheme.labelMedium)),
               if (ledger.open.isEmpty)
                 const Padding(padding: EdgeInsets.all(8), child: Text('No open lots.'))
               else
                 Card(child: Column(children: [for (final l in ledger.open) _LotTile(lot: l, today: p.today)])),
+              if (inst?.kind == 'stock') NewsSection(session: session, instrumentId: instrumentId),
               if (ledger.realized.isNotEmpty) ...[
                 const SectionHeader('Realised'),
                 Card(
@@ -72,8 +93,7 @@ class HoldingScreen extends StatelessWidget {
                           Money(r.gainPaise, decimals: true, signed: true, colored: true),
                         ]),
                         subtitle: Text('${prettyDay(r.buyDate)} → ${prettyDay(r.sellDate)}'),
-                        trailing: Pill(r.longTerm ? 'LTCG' : 'STCG',
-                            color: r.longTerm ? Theme.of(context).colorScheme.gain : Theme.of(context).colorScheme.warn),
+                        trailing: Pill(r.longTerm ? 'LTCG' : 'STCG', color: r.longTerm ? cs.gain : cs.warn),
                       ),
                   ]),
                 ),
@@ -88,6 +108,7 @@ class HoldingScreen extends StatelessWidget {
                       subtitle: Text([
                         prettyDay(parseDay(r.date)),
                         if (r.feesPaise > 0) 'charges ${rupees(r.feesPaise)}',
+                        if (r.sttPaise > 0) 'STT ${rupees(r.sttPaise)}',
                         if (r.note.isNotEmpty) r.note,
                       ].join(' · ')),
                       onTap: () => Navigator.push(
@@ -101,17 +122,19 @@ class HoldingScreen extends StatelessWidget {
                 ]),
               ),
               const Fine('Long-term = held more than 12 months (listed equity and equity MFs). Lots are rebuilt from '
-                  'your transactions every time. Not tax advice.'),
+                  'your transactions every time. Prices are end-of-day from public sources. Not tax advice.'),
             ]),
           );
         },
       );
 
-  Widget _header(BuildContext context, Portfolio p, Instrument? inst, Ledger l, String bucket) {
+  Widget _header(BuildContext context, Portfolio p, Instrument? inst, Ledger l, Holding? h) {
     final cs = Theme.of(context).colorScheme;
     final t = Theme.of(context).textTheme;
     final avg = l.units4 == 0 ? 0 : mulDiv(l.costPaise, unitScale, l.units4);
     final realized = l.realized.fold(0, (a, r) => a + r.gainPaise);
+    final cc = p.book.crossCheck(instrumentId);
+    final bucket = h?.bucket ?? 'core';
     return Card(
       child: Padding(
         padding: const EdgeInsets.all(16),
@@ -122,9 +145,47 @@ class HoldingScreen extends StatelessWidget {
                 style: TextStyle(color: cs.onSurfaceVariant, fontSize: 12)),
           ]),
           const SizedBox(height: 12),
-          FittedBox(child: Money(l.costPaise, style: t.headlineLarge?.copyWith(fontWeight: FontWeight.w700))),
+          FittedBox(child: Money(h?.valuePaise ?? l.costPaise, style: t.headlineLarge?.copyWith(fontWeight: FontWeight.w700))),
+          if (h != null && h.priced) ...[
+            Wrap(children: [
+              Money(h.gainPaise, signed: true, colored: true, style: const TextStyle(fontWeight: FontWeight.w600)),
+              Text(
+                  ' ${h.gainPaise >= 0 ? 'up' : 'down'} ${l.costPaise == 0 ? 0 : (h.gainPaise.abs() * 100 / l.costPaise).toStringAsFixed(1)}% on cost ${rupees(l.costPaise, decimals: false)}',
+                  style: TextStyle(color: cs.onSurfaceVariant)),
+            ]),
+            if (h.xirr != null)
+              Padding(
+                padding: const EdgeInsets.only(top: 4),
+                child: Text('XIRR ${(h.xirr! * 100).toStringAsFixed(1)}% a year. ${rateSentence(h.xirr!)}',
+                    style: TextStyle(color: cs.onSurfaceVariant, fontSize: 12.5)),
+              ),
+          ] else
+            Text('At cost. Market price appears after the next refresh.', style: TextStyle(color: cs.onSurfaceVariant)),
+          const SizedBox(height: 6),
           Text('${formatScaled(l.units4, 4)} units · avg ${rupees(avg)}',
               style: TextStyle(color: cs.onSurfaceVariant, fontFeatures: tabular)),
+          if (h?.price != null)
+            Padding(
+              padding: const EdgeInsets.only(top: 4),
+              child: Wrap(spacing: 8, crossAxisAlignment: WrapCrossAlignment.center, children: [
+                Text('₹${formatScaled(h!.price!.closeE4, 4, minDecimals: 2)} on ${prettyDay(h.price!.day)}',
+                    style: const TextStyle(fontWeight: FontWeight.w600, fontFeatures: tabular)),
+                if (cc != null)
+                  Pill(
+                    cc.$3 > mismatchBps ? 'NSE check ${(cc.$3 / 100).toStringAsFixed(2)}% off' : 'NSE check ✓',
+                    color: cc.$3 > mismatchBps ? cs.loss : cs.gain,
+                  ),
+                if (h.stale) Pill('stale', color: cs.warn, icon: Icons.history),
+              ]),
+            ),
+          if (h != null && h.mismatch)
+            Padding(
+              padding: const EdgeInsets.only(top: 8),
+              child: Notice(
+                  icon: Icons.compare_arrows,
+                  color: cs.loss,
+                  text: 'Yahoo and NSE closes differ by more than 0.5%. No signals for this holding until they agree.'),
+            ),
           if (realized != 0 || l.dividendsPaise > 0) ...[
             const SizedBox(height: 10),
             Wrap(spacing: 16, runSpacing: 6, children: [
@@ -141,43 +202,76 @@ class HoldingScreen extends StatelessWidget {
             ]),
           ],
           const SizedBox(height: 14),
-          Row(children: [
-            Expanded(
-              child: SegmentedButton<String>(
-                showSelectedIcon: false,
-                segments: const [
-                  ButtonSegment(value: 'core', label: Text('Core'), icon: Icon(Icons.shield_outlined)),
-                  ButtonSegment(value: 'satellite', label: Text('Satellite'), icon: Icon(Icons.rocket_launch_outlined)),
-                ],
-                selected: {bucket},
-                onSelectionChanged: (v) => db.setBucket(instrumentId, v.first),
-              ),
-            ),
-          ]),
-          if (l.units4 > 0) ...[
+          SegmentedButton<String>(
+            showSelectedIcon: false,
+            segments: const [
+              ButtonSegment(value: 'core', label: Text('Core'), icon: Icon(Icons.shield_outlined)),
+              ButtonSegment(value: 'satellite', label: Text('Satellite'), icon: Icon(Icons.rocket_launch_outlined)),
+            ],
+            selected: {bucket},
+            onSelectionChanged: (v) => db.setBucket(instrumentId, v.first),
+          ),
+          if (l.units4 > 0 && h != null) ...[
             const SizedBox(height: 10),
-            SizedBox(
-              width: double.infinity,
-              child: OutlinedButton.icon(
-                onPressed: () => showModalBottomSheet(
-                  context: context,
-                  isScrollControlled: true,
-                  builder: (_) => SellEstimator(ledger: l, realizedAll: p.realized, today: p.today, lastPriceE4: _lastPrice()),
+            Row(children: [
+              Expanded(
+                child: OutlinedButton.icon(
+                  onPressed: h.priced
+                      ? () => Navigator.push(
+                          context, MaterialPageRoute(builder: (_) => SellFlow(session: session, instrumentId: instrumentId)))
+                      : () => snack(context, 'Needs a market price first: pull to refresh on Home.'),
+                  icon: const Icon(Icons.psychology_alt_outlined),
+                  label: const Text('Thinking of selling?'),
                 ),
-                icon: const Icon(Icons.calculate_outlined),
-                label: const Text('What if I sell?'),
               ),
-            ),
+              const SizedBox(width: 8),
+              IconButton.outlined(
+                tooltip: 'Check against your statement',
+                onPressed: () => _statementCheck(context, l),
+                icon: const Icon(Icons.fact_check_outlined),
+              ),
+            ]),
           ],
         ]),
       ),
     );
   }
 
-  int? _lastPrice() {
-    final p = session.portfolio.value!;
-    final rows = p.txs.where((t) => t.instrumentId == instrumentId && (t.type == 'buy' || t.type == 'sip' || t.type == 'sell'));
-    return rows.isEmpty ? null : rows.last.priceE4;
+  /// Type the units from a CAS / broker statement; show any difference.
+  Future<void> _statementCheck(BuildContext context, Ledger l) async {
+    final c = TextEditingController();
+    await showDialog<void>(
+      context: context,
+      builder: (ctx) => StatefulBuilder(builder: (ctx, set) {
+        final v = parseScaled(c.text, 4);
+        final diff = v == null ? null : v - l.units4;
+        final cs = Theme.of(ctx).colorScheme;
+        return AlertDialog(
+          title: const Text('Check against statement'),
+          content: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Text('App: ${formatScaled(l.units4, 4)} units'),
+            const SizedBox(height: 12),
+            TextField(
+              controller: c,
+              autofocus: true,
+              keyboardType: const TextInputType.numberWithOptions(decimal: true),
+              decoration: const InputDecoration(labelText: 'Units on your CAMS / KFintech / broker statement'),
+              onChanged: (_) => set(() {}),
+            ),
+            const SizedBox(height: 12),
+            if (diff != null)
+              diff == 0
+                  ? Text('Matches exactly.', style: TextStyle(color: cs.gain, fontWeight: FontWeight.w600))
+                  : Text(
+                      '${diff > 0 ? 'Statement has' : 'App has'} ${formatScaled(diff.abs(), 4)} more units. '
+                      '${diff.abs() <= 10 ? 'Tiny gap: likely unit rounding or stamp duty; edit the units of one entry.' : 'Look for a missing or mistyped entry.'}',
+                      style: TextStyle(color: cs.warn)),
+          ]),
+          actions: [TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Done'))],
+        );
+      }),
+    );
+    c.dispose();
   }
 
   Future<void> _editInstrument(BuildContext context, Instrument inst) async {
@@ -209,7 +303,78 @@ class HoldingScreen extends StatelessWidget {
   }
 }
 
-/// Shared delete with the oversell guard.
+class _PriceChart extends StatelessWidget {
+  final Portfolio p;
+  final int id;
+  const _PriceChart({required this.p, required this.id});
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    final all = p.book.series(id);
+    final from = all.last.day.subtract(const Duration(days: 365));
+    final start = all.indexWhere((b) => !b.day.isBefore(from));
+    final bars = all.sublist(start < 0 ? 0 : start);
+    final sma = <FlSpot>[];
+    var sum = 0;
+    for (var i = 0; i < all.length; i++) {
+      sum += all[i].closeE4;
+      if (i >= 200) sum -= all[i - 200].closeE4;
+      final j = i - (all.length - bars.length);
+      if (i >= 199 && j >= 0) sma.add(FlSpot(j.toDouble(), sum / 200 / 10000));
+    }
+    return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+      SizedBox(
+        height: 170,
+        child: RepaintBoundary(
+          child: LineChart(LineChartData(
+            gridData: const FlGridData(show: false),
+            borderData: FlBorderData(show: false),
+            titlesData: const FlTitlesData(show: false),
+            lineTouchData: LineTouchData(
+              touchTooltipData: LineTouchTooltipData(
+                getTooltipColor: (_) => cs.inverseSurface,
+                getTooltipItems: (ts) => [
+                  for (final t in ts)
+                    LineTooltipItem(
+                        t.barIndex == 0
+                            ? '${prettyDay(bars[t.x.toInt()].day)}\n₹${t.y.toStringAsFixed(2)}'
+                            : '200-day ₹${t.y.toStringAsFixed(2)}',
+                        TextStyle(color: cs.onInverseSurface, fontSize: 12)),
+                ],
+              ),
+            ),
+            lineBarsData: [
+              LineChartBarData(
+                spots: [for (final (i, b) in bars.indexed) FlSpot(i.toDouble(), b.closeE4 / 10000)],
+                color: cs.primary,
+                barWidth: 2,
+                dotData: const FlDotData(show: false),
+                belowBarData: BarAreaData(
+                    show: true,
+                    gradient: LinearGradient(
+                        begin: Alignment.topCenter,
+                        end: Alignment.bottomCenter,
+                        colors: [cs.primary.withValues(alpha: 0.2), cs.primary.withValues(alpha: 0)])),
+              ),
+              if (sma.isNotEmpty)
+                LineChartBarData(spots: sma, color: cs.warn, barWidth: 1.5, dashArray: [5, 4], dotData: const FlDotData(show: false)),
+            ],
+          )),
+        ),
+      ),
+      Padding(
+        padding: const EdgeInsets.only(left: 8, top: 6),
+        child: Wrap(spacing: 14, children: [
+          Row(mainAxisSize: MainAxisSize.min, children: [Container(width: 12, height: 3, color: cs.primary), const Text('  Close')]),
+          if (sma.isNotEmpty)
+            Row(mainAxisSize: MainAxisSize.min, children: [Container(width: 12, height: 3, color: cs.warn), const Text('  200-day average')]),
+        ]),
+      ),
+    ]);
+  }
+}
+
+/// Delete with the oversell guard; Undo instead of an "are you sure?" dialog.
 Future<void> deleteTx(BuildContext context, Session s, Transaction t) async {
   final p = s.portfolio.value!;
   final rest = [for (final x in p.txs) if (x.instrumentId == t.instrumentId && x.id != t.id) x.tx];
@@ -217,11 +382,15 @@ Future<void> deleteTx(BuildContext context, Session s, Transaction t) async {
     snack(context, 'Cannot delete: a later sell would exceed units held. Edit or delete that sell first.');
     return;
   }
-  if (await confirm(context, 'Delete transaction?',
-      '${txLabel(t.type)} on ${prettyDay(parseDay(t.date))}. This cannot be undone.')) {
-    await s.db.deleteTx(t.id);
-    if (context.mounted) snack(context, 'Deleted');
-  }
+  await s.db.deleteTx(t.id);
+  if (!context.mounted) return;
+  ScaffoldMessenger.of(context)
+    ..hideCurrentSnackBar()
+    ..showSnackBar(SnackBar(
+      content: Text('Deleted ${txLabel(t.type).toLowerCase()} of ${prettyDay(parseDay(t.date))}'),
+      duration: const Duration(seconds: 5),
+      action: SnackBarAction(label: 'Undo', onPressed: () => s.db.restoreTx(t)),
+    ));
 }
 
 class _LotTile extends StatelessWidget {
@@ -376,87 +545,4 @@ class _ThesisCard extends StatelessWidget {
       ));
     }
   }
-}
-
-/// "What if I sell N units at price P today?" with tax versus waiting.
-class SellEstimator extends StatefulWidget {
-  final Ledger ledger;
-  final List<Realized> realizedAll;
-  final DateTime today;
-  final int? lastPriceE4;
-  const SellEstimator({super.key, required this.ledger, required this.realizedAll, required this.today, this.lastPriceE4});
-  @override
-  State<SellEstimator> createState() => _SellEstimatorState();
-}
-
-class _SellEstimatorState extends State<SellEstimator> {
-  late final _units = TextEditingController(text: formatScaled(widget.ledger.units4, 4));
-  late final _price = TextEditingController(text: widget.lastPriceE4 == null ? '' : formatScaled(widget.lastPriceE4!, 4));
-
-  @override
-  Widget build(BuildContext context) {
-    final cs = Theme.of(context).colorScheme;
-    final u = parseScaled(_units.text, 4), pr = parseScaled(_price.text, 4);
-    final ok = u != null && pr != null && u > 0 && pr > 0 && u <= widget.ledger.units4;
-    final w = ok
-        ? compareWait(lots: widget.ledger.open, units4: u, price4: pr, date: widget.today, realizedAll: widget.realizedAll)
-        : null;
-    return Padding(
-      padding: EdgeInsets.fromLTRB(20, 0, 20, 24 + MediaQuery.viewInsetsOf(context).bottom),
-      child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-        Text('What if I sell?', style: Theme.of(context).textTheme.titleLarge),
-        const SizedBox(height: 12),
-        Row(children: [
-          Expanded(
-            child: TextField(
-              controller: _units,
-              keyboardType: const TextInputType.numberWithOptions(decimal: true),
-              decoration: InputDecoration(labelText: 'Units', helperText: 'of ${formatScaled(widget.ledger.units4, 4)}'),
-              onChanged: (_) => setState(() {}),
-            ),
-          ),
-          const SizedBox(width: 12),
-          Expanded(
-            child: TextField(
-              controller: _price,
-              keyboardType: const TextInputType.numberWithOptions(decimal: true),
-              decoration: const InputDecoration(labelText: 'Price / NAV', prefixText: '₹ ', helperText: 'Default: last trade'),
-              onChanged: (_) => setState(() {}),
-            ),
-          ),
-        ]),
-        const SizedBox(height: 16),
-        if (w == null)
-          Text('Enter units (up to what you hold) and a price.', style: TextStyle(color: cs.onSurfaceVariant))
-        else ...[
-          _row('Proceeds', Money(w.now.proceedsPaise, decimals: true)),
-          _row('Gain', Money(w.now.gainPaise, decimals: true, signed: true, colored: true)),
-          _row('Est. tax if sold today', Money(w.now.extraTaxPaise, decimals: true)),
-          if (w.waitUntil != null) ...[
-            const Divider(height: 24),
-            _row('Est. tax if sold on ${prettyDay(w.waitUntil!)}', Money(w.later!.extraTaxPaise, decimals: true)),
-            const SizedBox(height: 8),
-            if (w.extraTaxPaise > 0)
-              Notice(
-                icon: Icons.savings_outlined,
-                color: cs.warn,
-                text: 'Selling now costs ${rupees(w.extraTaxPaise)} more tax than waiting '
-                    '${inDays(w.waitUntil!.difference(widget.today).inDays)} (same price assumed).',
-              ),
-          ] else
-            Padding(
-              padding: const EdgeInsets.only(top: 8),
-              child: Notice(icon: Icons.check_circle_outline, color: cs.gain, text: 'All units sold here are long-term.'),
-            ),
-        ],
-        const Fine('Uses FIFO lots and this FY\'s realised gains for this profile. Charges, surcharge and other '
-            'income not included. An estimate, not advice.'),
-      ]),
-    );
-  }
-
-  Widget _row(String k, Widget v) => Padding(
-        padding: const EdgeInsets.symmetric(vertical: 4),
-        child: Row(children: [Expanded(child: Text(k)), DefaultTextStyle.merge(style: const TextStyle(fontWeight: FontWeight.w600), child: v)]),
-      );
 }
