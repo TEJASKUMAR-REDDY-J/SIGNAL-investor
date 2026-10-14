@@ -75,6 +75,7 @@ class AgentsTab extends StatelessWidget {
               ]),
             ),
           ),
+          if ({for (final r in runs) r.date}.length >= 2) _Race(p: p, runs: runs),
           for (final k in AgentKind.values) _AgentCard(session: session, kind: k, book: books[k]!, prices: prices, runs: runs),
           _Notes(session: session),
           const Fine('Simulation only: no real money, no real orders. Prices come from public sources a few minutes late; '
@@ -587,4 +588,77 @@ class _RunCard extends StatelessWidget {
       ),
     );
   }
+}
+
+/// The three agents and NIFTY 50 on one chart: return since the first run.
+class _Race extends StatelessWidget {
+  final Portfolio p;
+  final List<AgentRun> runs;
+  const _Race({required this.p, required this.runs});
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    final dates = {for (final r in runs) r.date}.toList()..sort();
+    final idx = p.instruments.values.where((i) => i.yahooTicker == '^NSEI').firstOrNull;
+    final base = idx == null ? null : p.book.on(idx.id, parseDay(dates.first).subtract(const Duration(days: 1)))?.closeE4;
+    List<FlSpot> agentLine(AgentKind k) {
+      var last = agentStartCashPaise;
+      return [
+        const FlSpot(0, 0),
+        for (final (i, d) in dates.indexed)
+          FlSpot(i + 1.0, ((last = runs.lastWhere((r) => r.agent == k.name && r.date == d, orElse: () => _carry(k, d, last)).valuePaise) / agentStartCashPaise - 1) * 100),
+      ];
+    }
+
+    final nifty = base == null
+        ? const <FlSpot>[]
+        : [
+            const FlSpot(0, 0),
+            for (final (i, d) in dates.indexed)
+              if (p.book.on(idx!.id, parseDay(d)) case final b?) FlSpot(i + 1.0, (b.closeE4 / base - 1) * 100),
+          ];
+    final colors = [cs.series[0], cs.series[1], cs.series[2]];
+    return Padding(
+      padding: const EdgeInsets.only(top: 10),
+      child: Card(
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(16, 16, 16, 12),
+          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            const Text('The race: return since the start', style: TextStyle(fontWeight: FontWeight.w700)),
+            const SizedBox(height: 10),
+            SizedBox(
+              height: 150,
+              child: LineChart(LineChartData(
+                gridData: const FlGridData(show: false),
+                titlesData: const FlTitlesData(show: false),
+                borderData: FlBorderData(show: false),
+                lineTouchData: const LineTouchData(enabled: false),
+                lineBarsData: [
+                  for (final (i, k) in AgentKind.values.indexed)
+                    LineChartBarData(spots: agentLine(k), color: colors[i], barWidth: 2.4, dotData: const FlDotData(show: false)),
+                  if (nifty.length >= 2)
+                    LineChartBarData(spots: nifty, color: cs.onSurfaceVariant, barWidth: 1.6, dashArray: [5, 4], dotData: const FlDotData(show: false)),
+                ],
+              )),
+            ),
+            const SizedBox(height: 8),
+            Wrap(spacing: 14, runSpacing: 4, children: [
+              for (final (i, k) in AgentKind.values.indexed) _key(colors[i], agentConfigs[k]!.name),
+              if (nifty.length >= 2) _key(cs.onSurfaceVariant, 'NIFTY 50'),
+            ]),
+          ]),
+        ),
+      ),
+    );
+  }
+
+  AgentRun _carry(AgentKind k, String d, int value) =>
+      AgentRun(id: 0, agent: k.name, date: d, at: DateTime(2000), summary: '', valuePaise: value, cashPaise: 0, ai: false, toolCalls: 0);
+
+  Widget _key(Color c, String s) => Row(mainAxisSize: MainAxisSize.min, children: [
+        Container(width: 12, height: 3, color: c),
+        const SizedBox(width: 6),
+        Text(s, style: const TextStyle(fontSize: 12)),
+      ]);
 }

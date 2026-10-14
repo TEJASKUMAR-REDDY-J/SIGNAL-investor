@@ -11,6 +11,8 @@ import 'package:signal_investor/engine/calendar.dart';
 import 'package:signal_investor/engine/lots.dart';
 import 'package:signal_investor/engine/portfolio.dart';
 import 'package:signal_investor/main.dart';
+import 'package:signal_investor/engine/agents.dart';
+import 'package:signal_investor/ui/agents.dart';
 import 'package:signal_investor/ui/holding.dart';
 import 'package:signal_investor/ui/sandbox.dart';
 import 'package:signal_investor/ui/settings.dart';
@@ -376,6 +378,45 @@ void main() {
     expect(find.textContaining('Could not reach the price sources'), findsWidgets);
     expect(await q(t, () => storage.read(key: 'tour_done')), '1');
     expect(find.text('Start here'), findsOneWidget);
+    await close(t);
+  });
+
+  testWidgets('agents: race chart, scorecard, debate and lessons', (t) async {
+    tall(t);
+    final id = await stock(t, 'Tata Consultancy', 'TCS');
+    await q(t, () async {
+      await market.putPrices(id, 'yahoo', [('2026-10-13', 23000000), ('2026-10-14', 24000000)]);
+      for (final (d, v) in [('2026-10-13', 250000000), ('2026-10-14', 251000000)]) {
+        for (final a in ['daily', 'weekly', 'monthly']) {
+          await market.into(market.agentRuns).insert(AgentRunsCompanion.insert(
+              agent: a, date: d, at: DateTime.utc(2026, 10, 14), summary: 'Bought TCS on strength.', valuePaise: v, cashPaise: v - 4600000,
+              ai: const Value(true), bull: const Value('Uptrend with strong ROE.'), bear: const Value('Market is risk-off.'),
+              regime: const Value('Risk-off · VIX 14.6'), toolCalls: const Value(4)));
+        }
+      }
+      await market.into(market.agentTrades).insert(AgentTradesCompanion.insert(
+          agent: 'weekly', instrumentId: id, date: '2026-10-13', at: DateTime.utc(2026, 10, 13), side: 'buy', unitsE4: 200000, priceE4: 23000000,
+          reason: const Value('1-month trend +8%')));
+      await market.into(market.agentMemories).insert(AgentMemoriesCompanion.insert(agent: 'weekly', at: DateTime.utc(2026, 10, 12), body: 'Avoid chasing RSI above 70.'));
+    });
+    await t.pumpWidget(app(Shell(session: session)));
+    await settle(t, 40);
+    expect(find.text('The race: return since the start'), findsOneWidget);
+    expect(find.textContaining('Market mood: Risk-off'), findsOneWidget);
+    t.state<NavigatorState>(find.byType(Navigator).first)
+        .push(MaterialPageRoute(builder: (_) => AgentScreen(session: session, kind: AgentKind.weekly)));
+    await settle(t, 20);
+    expect(find.text('Scorecard'), findsOneWidget);
+    await t.tap(find.text('Activity'));
+    await settle(t, 20);
+    await t.tap(find.text('Bought TCS on strength.').first);
+    await settle(t, 10);
+    expect(find.text('Uptrend with strong ROE.'), findsOneWidget);
+    expect(find.text('Market is risk-off.'), findsOneWidget);
+    expect(find.textContaining('4 data look-ups'), findsWidgets);
+    await t.tap(find.text('Rules'));
+    await settle(t, 20);
+    expect(find.textContaining('Avoid chasing RSI above 70.'), findsOneWidget);
     await close(t);
   });
 
