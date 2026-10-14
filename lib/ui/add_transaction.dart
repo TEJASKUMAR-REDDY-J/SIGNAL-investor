@@ -426,8 +426,8 @@ class _AddTransactionState extends State<AddTransaction> {
           ]),
           const SizedBox(height: 4),
           Row(children: [
-            const Expanded(child: Text('Est. tax on this sale')),
-            Money(w.now.extraTaxPaise, decimals: true, style: const TextStyle(fontWeight: FontWeight.w700)),
+            Expanded(child: Text(w.now.extraTaxPaise < 0 ? 'Est. tax saved (loss offsets gains this FY)' : 'Est. tax on this sale')),
+            Money(w.now.extraTaxPaise.abs(), decimals: true, style: const TextStyle(fontWeight: FontWeight.w700)),
           ]),
           if (w.extraTaxPaise > 0) ...[
             const SizedBox(height: 10),

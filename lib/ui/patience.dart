@@ -206,6 +206,7 @@ class _HoldToConfirmState extends State<HoldToConfirm> with SingleTickerProvider
     return Semantics(
       button: true,
       label: '${widget.label}. Press and hold for three seconds.',
+      onLongPress: widget.onConfirmed, // screen-reader long-press action; pointers still need the 3 s ring
       child: GestureDetector(
         onLongPressStart: (_) {
           HapticFeedback.selectionClick();

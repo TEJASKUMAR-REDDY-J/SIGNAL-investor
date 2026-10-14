@@ -164,9 +164,10 @@ class _SellFlowState extends State<SellFlow> {
           child: Padding(
             padding: const EdgeInsets.all(16),
             child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-              Text(_days == 0 ? 'Tax if sold today' : 'Tax if sold on ${prettyDay(day)}',
+              // A loss lowers this FY's tax on earlier gains: show it as a saving, not a negative tax.
+              Text('${then!.extraTaxPaise < 0 ? 'Tax saved' : 'Tax'} if sold ${_days == 0 ? 'today' : 'on ${prettyDay(day)}'}',
                   style: TextStyle(color: cs.onSurfaceVariant)),
-              RollingMoney(then!.extraTaxPaise,
+              RollingMoney(then.extraTaxPaise.abs(),
                   style: Theme.of(context).textTheme.headlineMedium?.copyWith(fontWeight: FontWeight.w700)),
               if (_days > 0 && now.extraTaxPaise > then.extraTaxPaise)
                 Text('Waiting saves ${rupees(now.extraTaxPaise - then.extraTaxPaise)} (same price assumed)',
