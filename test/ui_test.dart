@@ -1,3 +1,5 @@
+import 'dart:convert';
+
 import 'package:drift/drift.dart' show Value;
 import 'package:drift/native.dart';
 import 'package:flutter/material.dart';
@@ -108,7 +110,7 @@ void main() {
     // Holdings tab -> detail.
     await t.tap(find.text('Holdings'));
     await settle(t);
-    expect(find.text('₹25,025'), findsOneWidget);
+    expect(find.text('₹25,025'), findsWidgets); // row + totals strip
     await t.tap(find.text('Reliance Industries'));
     await settle(t);
     final lt = longTermFrom(istToday());
@@ -191,12 +193,14 @@ void main() {
     await settle(t);
     final tile = find.byKey(const ValueKey('tile-alloc'));
     final w1 = t.getSize(tile).width;
-    await t.longPress(find.text('ALLOCATION'));
+    await t.longPress(find.text('Allocation'));
     await settle(t);
     expect(t.getSize(tile).width, greaterThan(w1 * 1.8));
-    expect(await q(t, () => storage.read(key: 'layout3_p1')), contains('"alloc":2'));
+    expect(await q(t, () => storage.read(key: 'layout4_p1')), contains('"alloc":2'));
 
-    await t.tap(find.byTooltip('Customize home'));
+    await t.ensureVisible(find.text('Customize home'));
+    await settle(t);
+    await t.tap(find.text('Customize home'));
     await settle(t);
     final row = find.ancestor(of: find.text('Allocation'), matching: find.byType(ListTile));
     await t.tap(find.descendant(of: row, matching: find.byType(Switch)));
@@ -204,7 +208,8 @@ void main() {
     await t.tapAt(const Offset(200, 40)); // dismiss sheet
     await settle(t);
     expect(find.byKey(const ValueKey('tile-alloc')), findsNothing);
-    expect(await q(t, () => storage.read(key: 'layout3_p1')), contains('"hidden":["alloc"]'));
+    final saved = jsonDecode((await q(t, () => storage.read(key: 'layout4_p1')))!) as Map;
+    expect(saved['hidden'], contains('alloc'));
     await close(t);
   });
 

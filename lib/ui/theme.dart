@@ -21,6 +21,18 @@ Future<void> setThemeMode(ThemeMode m) async {
 ThemeData buildTheme(Brightness b) {
   final dark = b == Brightness.dark;
   var cs = ColorScheme.fromSeed(seedColor: _seed, brightness: b);
+  if (!dark) {
+    // Soft grey page, white cards: clean separation without borders.
+    cs = cs.copyWith(
+      surface: const Color(0xFFF4F6F5),
+      surfaceContainerLowest: Colors.white,
+      surfaceContainerLow: Colors.white,
+      surfaceContainer: const Color(0xFFEFF2F1),
+      surfaceContainerHigh: const Color(0xFFE8ECEA),
+      surfaceContainerHighest: const Color(0xFFE1E6E4),
+      outlineVariant: const Color(0xFFE1E6E4),
+    );
+  }
   if (dark) {
     // Deep, low-glare neutrals with a hint of green; OLED-friendly.
     cs = cs.copyWith(
@@ -45,22 +57,21 @@ ThemeData buildTheme(Brightness b) {
       surfaceTintColor: Colors.transparent,
       scrolledUnderElevation: 0,
       centerTitle: false,
-      titleTextStyle: TextStyle(fontFamily: 'Roboto', fontSize: 22, fontWeight: FontWeight.w700, color: cs.onSurface),
+      titleTextStyle: TextStyle(fontFamily: 'Roboto', fontSize: 20, fontWeight: FontWeight.w700, color: cs.onSurface),
     ),
     cardTheme: CardThemeData(
       elevation: 0,
       margin: EdgeInsets.zero,
-      color: dark ? cs.surfaceContainer : cs.surfaceContainerLow,
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(20),
-        side: BorderSide(color: cs.outlineVariant.withValues(alpha: dark ? 0.6 : 0.5)),
-      ),
+      color: dark ? cs.surfaceContainerLow : Colors.white,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
       clipBehavior: Clip.antiAlias,
     ),
     navigationBarTheme: NavigationBarThemeData(
       height: 68,
-      backgroundColor: dark ? cs.surfaceContainerLow : cs.surfaceContainer,
-      indicatorColor: cs.primaryContainer,
+      backgroundColor: dark ? cs.surface : Colors.white,
+      indicatorColor: cs.primaryContainer.withValues(alpha: dark ? 0.6 : 0.8),
+      elevation: 0,
+      shadowColor: Colors.transparent,
       labelBehavior: NavigationDestinationLabelBehavior.alwaysShow,
       surfaceTintColor: Colors.transparent,
     ),
@@ -97,6 +108,7 @@ ThemeData buildTheme(Brightness b) {
     dialogTheme: DialogThemeData(backgroundColor: dark ? cs.surfaceContainerHigh : cs.surface),
     snackBarTheme: const SnackBarThemeData(behavior: SnackBarBehavior.floating),
     listTileTheme: const ListTileThemeData(contentPadding: EdgeInsets.symmetric(horizontal: 16)),
+    dividerTheme: DividerThemeData(color: cs.outlineVariant.withValues(alpha: 0.6), thickness: 1, space: 1),
     pageTransitionsTheme: const PageTransitionsTheme(builders: {
       TargetPlatform.android: PredictiveBackPageTransitionsBuilder(),
     }),

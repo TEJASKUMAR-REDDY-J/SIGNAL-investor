@@ -15,7 +15,6 @@ import '../engine/sell_rules.dart';
 import '../engine/valuation.dart';
 import '../sources/mfapi.dart';
 import 'holding.dart';
-import 'logo.dart';
 import 'news.dart';
 import 'patience.dart';
 import 'sell_flow.dart';
@@ -27,7 +26,6 @@ import 'wrapped.dart';
 /// Tile id -> title. Order here is the default order.
 const tileTitles = {
   'donext': 'Do next',
-  'summary': 'Portfolio',
   'growth': 'You vs the index',
   'alloc': 'Allocation',
   'tax': 'Tax this FY',
@@ -38,9 +36,10 @@ const tileTitles = {
   'top': 'Top holdings',
   'market': 'Market calendar',
 };
+/// Calm by default: these are available under Customize but start hidden.
+const _defaultHidden = {'longterm', 'sips', 'goals', 'market'};
 const _defaultSize = {
   'donext': 3,
-  'summary': 3,
   'growth': 3,
   'alloc': 1,
   'tax': 1,
@@ -63,7 +62,7 @@ class Layout {
     for (final (i, k) in tileTitles.keys.indexed) {
       if (!order.contains(k)) order.insert(i.clamp(0, order.length), k);
     }
-    return Layout(order, {...((j['hidden'] as List?)?.cast<String>() ?? const <String>[])},
+    return Layout(order, s == null ? {..._defaultHidden} : {...((j['hidden'] as List?)?.cast<String>() ?? const <String>[])},
         {...((j['sizes'] as Map?)?.cast<String, int>() ?? const <String, int>{})});
   }
 
@@ -81,7 +80,7 @@ class Dashboard extends StatefulWidget {
 
 class _DashboardState extends State<Dashboard> {
   Layout _layout = Layout.parse(null);
-  String get _key => 'layout3_${widget.session.profile.id}';
+  String get _key => 'layout4_${widget.session.profile.id}';
   Session get s => widget.session;
 
   @override
@@ -244,8 +243,6 @@ class _DashboardState extends State<Dashboard> {
                   floating: true,
                   titleSpacing: 16,
                   title: Row(children: [
-                    const _Mark(),
-                    const SizedBox(width: 10),
                     CircleAvatar(
                       radius: 16,
                       backgroundColor: avatarColor(s.profile.id),
@@ -281,7 +278,6 @@ class _DashboardState extends State<Dashboard> {
                       ),
                     ),
                     AlertBell(session: s),
-                    IconButton(tooltip: 'Customize home', icon: const Icon(Icons.dashboard_customize_outlined), onPressed: _customize),
                     IconButton(
                       tooltip: 'Settings',
                       icon: const Icon(Icons.settings_outlined),
@@ -346,40 +342,40 @@ class _DashboardState extends State<Dashboard> {
   Widget _body(BuildContext context, Portfolio p) {
     final cs = Theme.of(context).colorScheme;
     final today = p.today;
-    final children = <Widget>[_status(context, p)];
+    final children = <Widget>[
+      if (p.txs.isNotEmpty) _Summary(p: p),
+      _status(context, p),
+    ];
 
-    // Bad-day mode: perspective from the index history the app has fetched.
+    // Bad-day mode: one calm line; the full context is a tap away.
     final f = p.fall;
     if (f != null) {
+      final ser = p.book.series(p.indexId!);
+      final years = (ser.last.day.difference(ser.first.day).inDays / 365.25).round();
+      final detail = f.similarFalls == 0
+          ? 'This is the deepest one-day fall in the $years years of index history on this phone. Big days stand out because they are rare.'
+          : 'In the $years years of index history on this phone there were ${f.similarFalls} one-day falls at least this deep. '
+              '${f.medianRecoveryDays == null ? '' : 'Half of them were back to the prior close within ${f.medianRecoveryDays} trading days. '}'
+              '${f.unrecovered > 0 ? '${f.unrecovered} have not recovered yet.' : ''}';
       children.add(Padding(
         padding: const EdgeInsets.only(bottom: 10),
-        child: Card(
-          child: Padding(
-            padding: const EdgeInsets.all(16),
-            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-              Row(children: [
-                Icon(Icons.waves, color: cs.primary),
-                const SizedBox(width: 8),
-                Expanded(
-                  child: Text('NIFTY 50 is down ${(-f.todayBps / 100).toStringAsFixed(1)}% today',
-                      style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 16)),
-                ),
-              ]),
-              const SizedBox(height: 8),
-              Builder(builder: (context) {
-                final s = p.book.series(p.indexId!);
-                final years = (s.last.day.difference(s.first.day).inDays / 365.25).round();
-                final text = f.similarFalls == 0
-                    ? 'This is the deepest one-day fall in the $years years of index history on this phone. '
-                        'Big days stand out because they are rare.'
-                    : 'In the $years years of index history on this phone there were ${f.similarFalls} one-day falls '
-                        'at least this deep. '
-                        '${f.medianRecoveryDays == null ? '' : 'Half of them were back to the prior close within ${f.medianRecoveryDays} trading days. '}'
-                        '${f.unrecovered > 0 ? '${f.unrecovered} have not recovered yet.' : ''}';
-                return Text(text, style: TextStyle(color: cs.onSurfaceVariant, height: 1.4));
-              }),
-              const Fine('Past recoveries are history, not a promise.'),
-            ]),
+        child: Notice(
+          icon: Icons.waves,
+          color: cs.primary,
+          text: 'NIFTY 50 down ${(-f.todayBps / 100).toStringAsFixed(1)}% today. See the long view.',
+          onTap: () => showModalBottomSheet(
+            context: context,
+            builder: (ctx) => SafeArea(
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(24, 0, 24, 24),
+                child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
+                  Text('A bad day, in perspective', style: Theme.of(ctx).textTheme.titleLarge),
+                  const SizedBox(height: 12),
+                  Text(detail, style: const TextStyle(height: 1.5, fontSize: 15)),
+                  const Fine('Past recoveries are history, not a promise.'),
+                ]),
+              ),
+            ),
           ),
         ),
       ));
@@ -430,13 +426,20 @@ class _DashboardState extends State<Dashboard> {
     return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
       ...children,
       _tiles(context, p),
+      Center(
+        child: TextButton.icon(
+          onPressed: _customize,
+          icon: const Icon(Icons.tune, size: 18),
+          label: const Text('Customize home'),
+        ),
+      ),
       const Fine('Prices are end-of-day from public sources and can be late or wrong. Estimates for listed equity '
           'and equity MFs only. Not investment or tax advice.'),
     ]);
   }
 
   Widget _tiles(BuildContext context, Portfolio p, {Set<String>? only}) => LayoutBuilder(builder: (context, c) {
-        const gap = 10.0;
+        const gap = 12.0;
         final cols = c.maxWidth < 600 ? 2 : (c.maxWidth < 900 ? 3 : 4);
         final unit = (c.maxWidth - gap * (cols - 1)) / cols;
         double width(int size) => switch (size) {
@@ -461,13 +464,6 @@ class _DashboardState extends State<Dashboard> {
       });
 }
 
-/// Small brand mark in the app bar.
-class _Mark extends StatelessWidget {
-  const _Mark();
-  @override
-  Widget build(BuildContext context) => const SizedBox(width: 26, height: 26, child: SignalLogo());
-}
-
 class _Tile extends StatelessWidget {
   final String id;
   final int size;
@@ -482,7 +478,6 @@ class _Tile extends StatelessWidget {
     final cs = Theme.of(context).colorScheme;
     final body = switch (id) {
       'donext' => _doNext(context),
-      'summary' => _summary(context),
       'alloc' => _alloc(context),
       'growth' => _growth(context),
       'tax' => _tax(context),
@@ -495,11 +490,10 @@ class _Tile extends StatelessWidget {
     };
     return Card(
       child: Padding(
-        padding: const EdgeInsets.all(14),
+        padding: const EdgeInsets.fromLTRB(18, 16, 18, 18),
         child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          Text(tileTitles[id]!.toUpperCase(),
-              style: t.labelSmall?.copyWith(letterSpacing: 0.8, color: cs.onSurfaceVariant, fontWeight: FontWeight.w600)),
-          const SizedBox(height: 8),
+          Text(tileTitles[id]!, style: t.titleSmall?.copyWith(fontWeight: FontWeight.w700, color: cs.onSurface)),
+          const SizedBox(height: 12),
           AnimatedSize(duration: const Duration(milliseconds: 200), alignment: Alignment.topLeft, child: body),
         ]),
       ),
@@ -619,8 +613,6 @@ class _Tile extends StatelessWidget {
     );
   }
 
-  // ---- Portfolio: since-start figure; today's move only on press-and-hold ----
-  Widget _summary(BuildContext context) => _Summary(p: p, size: size);
 
   Widget _alloc(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
@@ -984,11 +976,10 @@ class _Tile extends StatelessWidget {
       Navigator.push(context, MaterialPageRoute(builder: (_) => HoldingScreen(session: session, instrumentId: id)));
 }
 
-/// Calm by default: the since-start figure; today's move only while pressed.
+/// Hero: current value, invested, total returns. Today's move only while pressed.
 class _Summary extends StatefulWidget {
   final Portfolio p;
-  final int size;
-  const _Summary({required this.p, required this.size});
+  const _Summary({required this.p});
   @override
   State<_Summary> createState() => _SummaryState();
 }
@@ -1003,48 +994,63 @@ class _SummaryState extends State<_Summary> {
     final cs = Theme.of(context).colorScheme;
     final gain = p.gainPaise;
     final pct = p.investedPaise == 0 ? 0.0 : gain / p.investedPaise;
+    Widget col(String label, Widget value, {CrossAxisAlignment a = CrossAxisAlignment.start}) =>
+        Column(crossAxisAlignment: a, children: [
+          Text(label, style: TextStyle(fontSize: 12.5, color: cs.onSurfaceVariant)),
+          const SizedBox(height: 2),
+          DefaultTextStyle.merge(style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w600), child: value),
+        ]);
     return GestureDetector(
       onTapDown: (_) => setState(() => _peek = true),
       onTapUp: (_) => setState(() => _peek = false),
       onTapCancel: () => setState(() => _peek = false),
-      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-        FittedBox(child: Money(p.valuePaise, style: t.displaySmall?.copyWith(fontWeight: FontWeight.w700))),
-        AnimatedSwitcher(
-          duration: const Duration(milliseconds: 180),
-          child: _peek && p.anyPriced
-              ? Row(key: const ValueKey('day'), children: [
-                  Text('Today ', style: TextStyle(color: cs.onSurfaceVariant)),
-                  Money(p.dayChangePaise, signed: true, colored: true, style: const TextStyle(fontWeight: FontWeight.w600)),
-                  Text(p.dayChangePaise >= 0 ? '  up' : '  down', style: TextStyle(color: cs.onSurfaceVariant)),
-                ])
-              : Wrap(key: const ValueKey('since'), children: [
-                  Text(p.anyPriced ? 'Since start ' : 'Invested at cost · ', style: TextStyle(color: cs.onSurfaceVariant)),
-                  if (p.anyPriced) ...[
-                    Money(gain, signed: true, colored: true, style: const TextStyle(fontWeight: FontWeight.w600)),
-                    Text(' (${pct >= 0 ? 'up' : 'down'} ${(pct.abs() * 100).toStringAsFixed(1)}%)',
-                        style: TextStyle(color: cs.onSurfaceVariant)),
-                  ] else
-                    Text('${p.holdings.length} holdings', style: TextStyle(color: cs.onSurfaceVariant)),
-                ]),
-        ),
-        if (p.xirr != null) ...[
-          const SizedBox(height: 10),
-          Text('XIRR ${(p.xirr! * 100).toStringAsFixed(1)}% a year', style: const TextStyle(fontWeight: FontWeight.w600)),
-          Text(rateSentence(p.xirr!), style: TextStyle(color: cs.onSurfaceVariant, fontSize: 12.5)),
-        ],
-        if (widget.size >= 2) ...[
-          const SizedBox(height: 10),
-          Wrap(spacing: 8, runSpacing: 8, children: [
-            Pill('Invested ${rupees(p.investedPaise, decimals: false)}', color: cs.primary),
-            Pill('MF ${p.valuePaise == 0 ? 0 : (p.mfPaise * 100 / p.valuePaise).round()}%', color: cs.series[0]),
-            if (p.dividendsPaise > 0) Pill('Dividends ${rupees(p.dividendsPaise, decimals: false)}', color: cs.gain),
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(4, 8, 4, 14),
+        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Text(p.anyPriced ? 'Current value' : 'Invested (at cost)', style: TextStyle(color: cs.onSurfaceVariant)),
+          const SizedBox(height: 2),
+          FittedBox(child: Money(p.valuePaise, style: t.displaySmall?.copyWith(fontWeight: FontWeight.w700, letterSpacing: -0.5))),
+          const SizedBox(height: 14),
+          Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Expanded(child: col('Invested', Money(p.investedPaise))),
+            Expanded(
+              child: AnimatedSwitcher(
+                duration: const Duration(milliseconds: 160),
+                child: _peek && p.anyPriced
+                    ? col('Today', Wrap(children: [
+                        Money(p.dayChangePaise, signed: true, colored: true),
+                        Text(p.dayChangePaise >= 0 ? ' up' : ' down', style: TextStyle(color: cs.onSurfaceVariant, fontWeight: FontWeight.w400)),
+                      ]), a: CrossAxisAlignment.end)
+                    : col(
+                        'Total returns',
+                        p.anyPriced
+                            ? Wrap(alignment: WrapAlignment.end, children: [
+                                Money(gain, signed: true, colored: true),
+                                Text(' (${(pct.abs() * 100).toStringAsFixed(1)}%)',
+                                    style: TextStyle(color: cs.signed(gain), fontWeight: FontWeight.w600)),
+                              ])
+                            : Text('—', style: TextStyle(color: cs.onSurfaceVariant)),
+                        a: CrossAxisAlignment.end),
+              ),
+            ),
           ]),
-        ],
-        if (widget.size >= 3) ...[
-          const SizedBox(height: 8),
-          Text('Press and hold the card to see today\'s move.', style: TextStyle(fontSize: 11.5, color: cs.onSurfaceVariant)),
-        ],
-      ]),
+          if (p.xirr != null) ...[
+            const SizedBox(height: 14),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+              decoration: BoxDecoration(color: cs.primary.withValues(alpha: 0.08), borderRadius: BorderRadius.circular(12)),
+              child: Row(children: [
+                Icon(Icons.trending_up, size: 18, color: cs.primary),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text('XIRR ${(p.xirr! * 100).toStringAsFixed(1)}% a year · ${rateSentence(p.xirr!).replaceFirst('At this rate money doubles roughly', 'doubles about')}',
+                      style: const TextStyle(fontSize: 13)),
+                ),
+              ]),
+            ),
+          ],
+        ]),
+      ),
     );
   }
 }

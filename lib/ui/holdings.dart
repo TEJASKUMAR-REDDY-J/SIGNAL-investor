@@ -38,7 +38,6 @@ class _HoldingsTabState extends State<HoldingsTab> {
 
   @override
   Widget build(BuildContext context) {
-    final cs = Theme.of(context).colorScheme;
     return ValueListenableBuilder(
       valueListenable: widget.session.portfolio,
       builder: (context, p, _) {
@@ -118,80 +117,119 @@ class _HoldingsTabState extends State<HoldingsTab> {
             )
           else
             SliverPadding(
-              padding: const EdgeInsets.fromLTRB(12, 0, 12, 100),
-              sliver: SliverList.separated(
-                itemCount: list.length,
-                separatorBuilder: (_, _) => const SizedBox(height: 8),
-                itemBuilder: (context, i) {
-                  final h = list[i];
-                  final lt = ltShare(h);
-                  final share = p.valuePaise == 0 ? 0.0 : h.valuePaise / p.valuePaise;
-                  final pct = h.ledger.costPaise == 0 ? 0.0 : h.gainPaise / h.ledger.costPaise;
-                  return Card(
-                    child: InkWell(
-                      onTap: () => Navigator.push(context,
-                          MaterialPageRoute(builder: (_) => HoldingScreen(session: widget.session, instrumentId: h.instrumentId))),
-                      child: Padding(
-                        padding: const EdgeInsets.all(14),
-                        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                          Row(children: [
-                            CircleAvatar(
-                              radius: 18,
-                              backgroundColor: (h.isMf ? cs.series[0] : cs.series[1]).withValues(alpha: 0.15),
-                              child: Icon(h.isMf ? Icons.pie_chart_outline : Icons.show_chart,
-                                  size: 18, color: h.isMf ? cs.series[0] : cs.series[1]),
-                            ),
-                            const SizedBox(width: 12),
-                            Expanded(
-                              child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                                Text(h.name, maxLines: 1, overflow: TextOverflow.ellipsis,
-                                    style: const TextStyle(fontWeight: FontWeight.w600)),
-                                Text('${formatScaled(h.ledger.units4, 4)} units · ${(share * 100).toStringAsFixed(1)}%',
-                                    style: TextStyle(fontSize: 12, color: cs.onSurfaceVariant, fontFeatures: tabular)),
-                              ]),
-                            ),
-                            const SizedBox(width: 8),
-                            Column(crossAxisAlignment: CrossAxisAlignment.end, children: [
-                              Money(h.valuePaise, style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 16)),
-                              if (h.priced)
-                                Text('${pct >= 0 ? 'up' : 'down'} ${(pct.abs() * 100).toStringAsFixed(1)}%',
-                                    style: TextStyle(fontSize: 12, color: cs.signed(h.gainPaise), fontWeight: FontWeight.w600))
-                              else
-                                Text('at cost', style: TextStyle(fontSize: 12, color: cs.onSurfaceVariant)),
-                            ]),
-                          ]),
-                          const SizedBox(height: 10),
-                          Row(children: [
-                            Expanded(child: Meter(lt, height: 5, color: cs.gain)),
-                            const SizedBox(width: 10),
-                            Flexible(
-                              child: Text('${(lt * 100).round()}% long-term',
-                                  maxLines: 1,
-                                  overflow: TextOverflow.ellipsis,
-                                  style: TextStyle(fontSize: 11.5, color: cs.onSurfaceVariant)),
-                            ),
-                            if (h.bucket == 'satellite') ...[const SizedBox(width: 8), Pill('Satellite', color: cs.series[2])],
-                            if (h.mismatch || h.stale) ...[
-                              const SizedBox(width: 8),
-                              Tooltip(
-                                message: h.mismatch ? 'Price sources disagree' : 'Price is stale',
-                                child: Icon(h.mismatch ? Icons.compare_arrows : Icons.history, size: 16, color: cs.warn),
-                              ),
-                            ],
-                            if (h.ledger.oversold.isNotEmpty) ...[
-                              const SizedBox(width: 8),
-                              Icon(Icons.error_outline, size: 16, color: cs.loss),
-                            ],
-                          ]),
-                        ]),
-                      ),
-                    ),
-                  );
-                },
+              padding: const EdgeInsets.fromLTRB(12, 4, 12, 100),
+              sliver: SliverToBoxAdapter(
+                child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+                  _Totals(p: p),
+                  const SizedBox(height: 12),
+                  Card(
+                    child: Column(children: [
+                      for (final (i, h) in list.indexed) ...[
+                        if (i > 0) const Divider(indent: 68),
+                        _Row(session: widget.session, h: h, lt: ltShare(h), share: p.valuePaise == 0 ? 0.0 : h.valuePaise / p.valuePaise),
+                      ],
+                    ]),
+                  ),
+                ]),
               ),
             ),
         ]);
       },
+    );
+  }
+}
+
+
+/// Groww-style strip: current, invested, returns.
+class _Totals extends StatelessWidget {
+  final Portfolio p;
+  const _Totals({required this.p});
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    Widget cell(String k, Widget v, [CrossAxisAlignment a = CrossAxisAlignment.start]) => Expanded(
+          child: Column(crossAxisAlignment: a, children: [
+            Text(k, style: TextStyle(fontSize: 12, color: cs.onSurfaceVariant)),
+            const SizedBox(height: 2),
+            DefaultTextStyle.merge(style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 15), child: v),
+          ]),
+        );
+    final pct = p.investedPaise == 0 ? 0.0 : p.gainPaise / p.investedPaise;
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Row(children: [
+          cell('Current', Money(p.valuePaise)),
+          cell('Invested', Money(p.investedPaise), CrossAxisAlignment.center),
+          cell(
+              'Returns',
+              p.anyPriced
+                  ? Text('${pct >= 0 ? '+' : '-'}${(pct.abs() * 100).toStringAsFixed(1)}%', style: TextStyle(color: cs.signed(p.gainPaise)))
+                  : const Text('—'),
+              CrossAxisAlignment.end),
+        ]),
+      ),
+    );
+  }
+}
+
+class _Row extends StatelessWidget {
+  final Session session;
+  final Holding h;
+  final double lt;
+  final double share;
+  const _Row({required this.session, required this.h, required this.lt, required this.share});
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    final pct = h.ledger.costPaise == 0 ? 0.0 : h.gainPaise / h.ledger.costPaise;
+    final c = h.isMf ? cs.series[0] : cs.series[1];
+    return InkWell(
+      onTap: () => Navigator.push(
+          context, MaterialPageRoute(builder: (_) => HoldingScreen(session: session, instrumentId: h.instrumentId))),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+        child: Row(children: [
+          Container(
+            width: 40,
+            height: 40,
+            alignment: Alignment.center,
+            decoration: BoxDecoration(color: c.withValues(alpha: 0.12), borderRadius: BorderRadius.circular(12)),
+            child: Text(
+              h.name.trim().isEmpty ? '?' : h.name.trim()[0].toUpperCase(),
+              style: TextStyle(color: c, fontWeight: FontWeight.w800, fontSize: 16),
+            ),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              Text(h.name, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontWeight: FontWeight.w600)),
+              const SizedBox(height: 3),
+              Row(children: [
+                Flexible(
+                  child: Text('${formatScaled(h.ledger.units4, 4)} units · ${(lt * 100).round()}% ripe',
+                      maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(fontSize: 12, color: cs.onSurfaceVariant)),
+                ),
+                if (h.bucket == 'satellite') ...[const SizedBox(width: 6), Pill('Satellite', color: cs.series[2])],
+                if (h.mismatch || h.stale) ...[
+                  const SizedBox(width: 6),
+                  Icon(h.mismatch ? Icons.compare_arrows : Icons.history, size: 14, color: cs.warn),
+                ],
+              ]),
+            ]),
+          ),
+          const SizedBox(width: 10),
+          Column(crossAxisAlignment: CrossAxisAlignment.end, children: [
+            Money(h.valuePaise, style: const TextStyle(fontWeight: FontWeight.w700)),
+            const SizedBox(height: 3),
+            h.priced
+                ? Text('${pct >= 0 ? '+' : '-'}${(pct.abs() * 100).toStringAsFixed(1)}%',
+                    style: TextStyle(fontSize: 12.5, color: cs.signed(h.gainPaise), fontWeight: FontWeight.w600))
+                : Text('at cost', style: TextStyle(fontSize: 12, color: cs.onSurfaceVariant)),
+          ]),
+        ]),
+      ),
     );
   }
 }
