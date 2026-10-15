@@ -44,6 +44,8 @@ class Session {
   Future<void> Function()? reloadIdeas;
   /// Paper agents: progress text while a run is going, and the run trigger.
   final agentStatus = ValueNotifier<String?>(null);
+  /// Why the last run on this phone failed or skipped an agent (cleared on the next run).
+  final agentError = ValueNotifier<String?>(null);
   Future<void> Function()? runAgents;
   Session(this.profile, this.db, this.market, this.portfolio, this.lock);
 }

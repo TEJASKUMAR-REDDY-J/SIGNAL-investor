@@ -49,15 +49,8 @@ class Refresher {
   final List<Step> extra;
   Refresher(this.m, this.net, {this.extra = const []});
 
-  Future<Instrument> _ensure(String kind, String name, {String? code, String? ticker, String aliases = ''}) async {
-    final q = m.select(m.instruments)
-      ..where((i) => code != null ? i.schemeCode.equals(code) : i.yahooTicker.equals(ticker!));
-    final hit = await q.getSingleOrNull();
-    if (hit != null) return hit;
-    final id = await m.into(m.instruments).insert(InstrumentsCompanion.insert(
-        kind: kind, name: name, schemeCode: Value(code), yahooTicker: Value(ticker), aliases: Value(aliases)));
-    return (await (m.select(m.instruments)..where((i) => i.id.equals(id))).getSingle());
-  }
+  Future<Instrument> _ensure(String kind, String name, {String? code, String? ticker, String aliases = ''}) =>
+      m.instrumentFor(kind: kind, name: name, schemeCode: code, yahooTicker: ticker, aliases: aliases);
 
   Future<Instrument> benchmark() => _ensure('mf', 'Nifty 50 index fund (benchmark)', code: benchmarkScheme, aliases: 'benchmark');
   Future<Instrument> index() => _ensure('index', 'NIFTY 50', ticker: indexTicker, aliases: 'index');

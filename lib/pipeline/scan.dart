@@ -45,9 +45,9 @@ ScanInput _input(Listing u, Map<String, dynamic> data, DateTime now) => ScanInpu
       data['pAt'] == null ? now : DateTime.parse(data['pAt'] as String),
     );
 
-/// Stale when older than the cache age or fetched before growth fields existed.
+/// Stale when older than the cache age or fetched before the EPS / book value fields existed.
 bool _fundamentalsStale(Map<String, dynamic> data, int ageDays) =>
-    ageDays > fundamentalsMaxAgeDays || data['f'] is! Map || !(data['f'] as Map).containsKey('revenueGrowth');
+    ageDays > fundamentalsMaxAgeDays || data['f'] is! Map || !(data['f'] as Map).containsKey('bookValue');
 
 /// Refreshes one symbol's cached fundamentals (and prices if it passes the filters).
 Future<void> _refreshOne(MarketDb m, Net net, YahooSession yahoo, Listing u, Map<String, dynamic> data, DateTime fetchedAt,

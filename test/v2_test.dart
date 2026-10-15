@@ -169,17 +169,19 @@ void main() {
       expect(digestLine(s, {1: 'TCS', 2: 'Infosys'}), startsWith('1 positive, 1 negative across 2 companies. '));
     });
 
-    test('daily job slots: 08:00, 11:00 and 16:00 IST', () {
-      // 06:00 IST -> 08:00 IST same day (02:30 UTC)
-      expect(nextSlotUtc(DateTime.utc(2026, 10, 14, 0, 30)), DateTime.utc(2026, 10, 14, 2, 30));
-      // 09:00 IST -> 11:00 IST (05:30 UTC), when the agents trade
-      expect(nextSlotUtc(DateTime.utc(2026, 10, 14, 3, 30)), DateTime.utc(2026, 10, 14, 5, 30));
-      // 12:00 IST -> 16:00 IST (10:30 UTC)
-      expect(nextSlotUtc(DateTime.utc(2026, 10, 14, 6, 30)), DateTime.utc(2026, 10, 14, 10, 30));
-      // 17:00 IST -> next day 08:00 IST
-      expect(nextSlotUtc(DateTime.utc(2026, 10, 14, 11, 30)), DateTime.utc(2026, 10, 15, 2, 30));
-      // exactly on a slot -> the next one
-      expect(nextSlotUtc(DateTime.utc(2026, 10, 14, 2, 30)), DateTime.utc(2026, 10, 14, 5, 30));
+    test('digest slots: 08:00, 11:00 and 16:00 IST; due once per slot', () {
+      // 06:00 IST -> yesterday 16:00 IST
+      expect(lastSlotUtc(DateTime.utc(2026, 10, 14, 0, 30)), DateTime.utc(2026, 10, 13, 10, 30));
+      // 09:00 IST -> 08:00 IST
+      expect(lastSlotUtc(DateTime.utc(2026, 10, 14, 3, 30)), DateTime.utc(2026, 10, 14, 2, 30));
+      // exactly 11:00 IST -> that slot
+      expect(lastSlotUtc(DateTime.utc(2026, 10, 14, 5, 30)), DateTime.utc(2026, 10, 14, 5, 30));
+      // 17:00 IST -> 16:00 IST
+      expect(lastSlotUtc(DateTime.utc(2026, 10, 14, 11, 30)), DateTime.utc(2026, 10, 14, 10, 30));
+      final now = DateTime.utc(2026, 10, 14, 6); // 11:30 IST
+      expect(digestDue(now, null), isTrue);
+      expect(digestDue(now, DateTime.utc(2026, 10, 14, 3)), isTrue); // last ran 08:30, 11:00 slot since
+      expect(digestDue(now, DateTime.utc(2026, 10, 14, 5, 40)), isFalse); // already ran after 11:00
     });
   });
 

@@ -94,32 +94,49 @@ Future<List<Quote>> yahooQuotes(Net n, List<String> tickers) async {
   return out;
 }
 
-/// Cookie + crumb session for quoteSummary (fundamentals).
+/// Cookie + crumb session for quoteSummary (fundamentals). Its own rate-limit bucket:
+/// a 429 during a big fundamentals scan must not block price requests.
+const qsSource = 'yahoo-qs';
+
 class YahooSession {
   final Net n;
   String? _cookie, _crumb;
+  Future<void>? _opening;
   YahooSession(this.n);
+
+  // One shared open: concurrent callers must not mix one session's cookie with another's crumb (HTTP 401).
+  Future<void> _ensure() => _crumb != null ? Future.value() : (_opening ??= _open().whenComplete(() => _opening = null));
 
   Future<void> _open() async {
     // fc.yahoo.com answers 404 but sets the session cookie; read the header directly.
     final raw = await n.client
         .get(Uri.parse('https://fc.yahoo.com/'), headers: {'User-Agent': browserUa}).timeout(n.timeout);
-    _cookie = (raw.headers['set-cookie'] ?? '').split(';').first;
-    final c = await n.get('yahoo', Uri.parse('https://query2.finance.yahoo.com/v1/test/getcrumb'),
-        headers: {'Cookie': _cookie!});
-    _crumb = c.body.trim();
-    if (_crumb!.isEmpty || _crumb!.contains('<')) throw FetchError('yahoo', 'no crumb');
+    final cookie = (raw.headers['set-cookie'] ?? '').split(';').first;
+    final c = await n.get(qsSource, Uri.parse('https://query2.finance.yahoo.com/v1/test/getcrumb'),
+        headers: {'Cookie': cookie});
+    final crumb = c.body.trim();
+    if (crumb.isEmpty || crumb.contains('<')) throw FetchError('yahoo', 'no crumb');
+    _cookie = cookie;
+    _crumb = crumb;
   }
 
   /// Selected fundamentals as plain numbers (null when missing).
-  Future<Map<String, num?>> fundamentals(String ticker) async {
-    if (_crumb == null) await _open();
-    final r = await n.get(
-        'yahoo',
-        Uri.https('query2.finance.yahoo.com', '/v10/finance/quoteSummary/$ticker',
-            {'modules': 'financialData,defaultKeyStatistics,summaryDetail', 'crumb': _crumb!}),
-        headers: {'Cookie': _cookie!});
-    return parseFundamentals(r.body);
+  Future<Map<String, num?>> fundamentals(String ticker, {bool retry = true}) async {
+    await _ensure();
+    final crumb = _crumb!;
+    try {
+      final r = await n.get(
+          qsSource,
+          Uri.https('query2.finance.yahoo.com', '/v10/finance/quoteSummary/$ticker',
+              {'modules': 'financialData,defaultKeyStatistics,summaryDetail', 'crumb': crumb}),
+          headers: {'Cookie': _cookie!});
+      return parseFundamentals(r.body);
+    } on FetchError catch (e) {
+      // Expired session: open a fresh one once.
+      if (!retry || !e.message.contains('401')) rethrow;
+      if (_crumb == crumb) _crumb = null;
+      return fundamentals(ticker, retry: false);
+    }
   }
 }
 
@@ -135,8 +152,13 @@ Map<String, num?> parseFundamentals(String body) {
     return x is num && x.isFinite ? x : null;
   }
 
+  // Yahoo now leaves returnOnEquity and the cash flows empty for most NSE names (seen 2026-10-15):
+  // ROE falls back to trailing EPS / book value per share.
+  final eps = raw('defaultKeyStatistics', 'trailingEps'), bv = raw('defaultKeyStatistics', 'bookValue');
   return {
-    'roe': raw('financialData', 'returnOnEquity'),
+    'roe': raw('financialData', 'returnOnEquity') ?? (eps != null && bv != null && bv > 0 ? eps / bv : null),
+    'eps': eps,
+    'bookValue': bv,
     'debtToEquity': raw('financialData', 'debtToEquity'),
     'freeCashflow': raw('financialData', 'freeCashflow'),
     'operatingCashflow': raw('financialData', 'operatingCashflow'),
@@ -161,12 +183,19 @@ Map<String, num?> parseFundamentals(String body) {
 Future<Map<String, (Quote, List<int>)>> yahooSparkHistory(Net n, List<String> tickers, {String range = '1mo'}) async {
   final ok = [for (final t in tickers) if (RegExp(r'^[\^A-Z0-9&.\-]{1,25}$').hasMatch(t)) t];
   final out = <String, (Quote, List<int>)>{};
+  Object? error;
   for (var i = 0; i < ok.length; i += 20) {
     final batch = ok.sublist(i, min(i + 20, ok.length));
-    final r = await n.get('yahoo', Uri.https('query1.finance.yahoo.com', '/v7/finance/spark',
-        {'symbols': batch.join(','), 'range': range, 'interval': '1d'}));
-    out.addAll(parseSparkHistory(r.body));
+    try {
+      final r = await n.get('yahoo', Uri.https('query1.finance.yahoo.com', '/v7/finance/spark',
+          {'symbols': batch.join(','), 'range': range, 'interval': '1d'}));
+      out.addAll(parseSparkHistory(r.body));
+    } catch (e) {
+      // One bad batch costs 20 names, not the whole run.
+      error = e;
+    }
   }
+  if (out.isEmpty && error != null) throw error;
   return out;
 }
 

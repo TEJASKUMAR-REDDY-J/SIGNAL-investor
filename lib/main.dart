@@ -70,6 +70,7 @@ class _AppState extends State<App> with WidgetsBindingObserver {
       final p = await deviceProfile();
       _market ??= await openMarket();
       _profile = await openProfile(p);
+      await _profile!.applyMerges(await _market!.instrumentMerges());
       final session = Session(p, _profile!, _market!, ValueNotifier<Portfolio?>(null), lock);
       await _nav.currentState!.push(MaterialPageRoute(builder: (_) => Shell(session: session)));
       return null;

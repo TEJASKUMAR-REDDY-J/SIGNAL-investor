@@ -364,8 +364,8 @@ class _NewsCardState extends State<_NewsCard> {
         child: Column(children: [
           SwitchListTile(
             secondary: const Icon(Icons.notifications_outlined),
-            title: const Text('Twice-daily summary'),
-            subtitle: const Text("8 AM and 4 PM: news and NSE filings for what you hold, watch and the Advisor's ideas. "
+            title: const Text('News summary'),
+            subtitle: const Text("8 AM, 11 AM and 4 PM: news and NSE filings for what you hold, watch and the Advisor's ideas. "
                 'One notification, only when there is something new.'),
             value: _on,
             onChanged: (v) async {

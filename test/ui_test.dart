@@ -403,6 +403,12 @@ void main() {
     await settle(t, 40);
     expect(find.text('The race: return since the start'), findsOneWidget);
     expect(find.textContaining('Market mood: Risk-off'), findsOneWidget);
+    // A failed run says why instead of silently doing nothing.
+    session.agentStatus.value = null; // the real-clock auto run may still be going
+    session.agentError.value = 'Could not fetch prices from Yahoo (HTTP 429). Tap Run now again in a few minutes.';
+    await settle(t, 5);
+    expect(find.textContaining('Could not fetch prices from Yahoo'), findsOneWidget);
+    session.agentError.value = null;
     t.state<NavigatorState>(find.byType(Navigator).first)
         .push(MaterialPageRoute(builder: (_) => AgentScreen(session: session, kind: AgentKind.weekly)));
     await settle(t, 20);

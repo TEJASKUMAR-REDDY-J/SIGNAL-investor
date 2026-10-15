@@ -1,6 +1,7 @@
 import 'package:drift/drift.dart' show OrderingTerm, Value;
 import 'package:fl_chart/fl_chart.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
 import '../db/db.dart';
 import '../engine/agent_stats.dart';
@@ -8,7 +9,9 @@ import '../engine/agents.dart';
 import '../engine/lots.dart';
 import '../engine/money.dart';
 import '../engine/portfolio.dart';
+import '../db/open_db.dart';
 import '../pipeline/agents_run.dart';
+import '../pipeline/background.dart';
 import 'holding.dart';
 import 'theme.dart';
 import 'widgets.dart';
@@ -16,7 +19,9 @@ import 'widgets.dart';
 String _pc(double x) => '${x >= 0 ? '+' : ''}${(x * 100).toStringAsFixed(2)}%';
 
 /// Latest known price per instrument (agents store theirs in the shared price table).
-Map<int, int> _prices(Portfolio p, Iterable<int> ids) => {for (final id in ids) id: p.book.latest(id)?.closeE4 ?? 0};
+Map<int, int> _prices(Portfolio p, Iterable<int> ids) => {
+      for (final id in ids) id: ?p.book.latest(id)?.closeE4,
+    };
 
 /// The autonomous paper portfolios: three agents, Rs 25 lakh each, NIFTY 500 only.
 class AgentsTab extends StatelessWidget {
@@ -75,6 +80,7 @@ class AgentsTab extends StatelessWidget {
               ]),
             ),
           ),
+          const _Background(),
           if ({for (final r in runs) r.date}.length >= 2) _Race(p: p, runs: runs),
           for (final k in AgentKind.values) _AgentCard(session: session, kind: k, book: books[k]!, prices: prices, runs: runs),
           _Notes(session: session),
@@ -84,6 +90,87 @@ class AgentsTab extends StatelessWidget {
         ]),
       ),
     ]);
+  }
+}
+
+const _power = MethodChannel('signal/power');
+
+/// Background runs need the battery exemption; shows it (and the last wake) until granted.
+class _Background extends StatefulWidget {
+  const _Background();
+  @override
+  State<_Background> createState() => _BackgroundState();
+}
+
+class _BackgroundState extends State<_Background> with WidgetsBindingObserver {
+  bool? _ok;
+  DateTime? _wake;
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addObserver(this);
+    _check();
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) _check(); // back from the system dialog
+  }
+
+  Future<void> _check() async {
+    bool? ok;
+    try {
+      ok = await _power.invokeMethod<bool>('isIgnoring');
+    } catch (_) {
+      ok = null; // no platform (tests)
+    }
+    final w = DateTime.tryParse(await storage.read(key: lastWakeKey).catchError((_) => null) ?? '');
+    if (mounted) {
+      setState(() {
+        _ok = ok;
+        _wake = w;
+      });
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (_ok != false) return const SizedBox.shrink();
+    final cs = Theme.of(context).colorScheme;
+    return Padding(
+      padding: const EdgeInsets.only(top: 10),
+      child: Card(
+        color: cs.errorContainer.withValues(alpha: 0.35),
+        child: Padding(
+          padding: const EdgeInsets.all(16),
+          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Row(children: [
+              Icon(Icons.battery_alert_outlined, color: cs.error),
+              const SizedBox(width: 8),
+              const Expanded(child: Text('Let the agents run when the app is closed', style: TextStyle(fontWeight: FontWeight.w700))),
+            ]),
+            const SizedBox(height: 6),
+            Text(
+                'Battery optimisation can stop background runs. Tap Allow and choose Allow. On Xiaomi, Redmi, Oppo, Vivo, Realme '
+                'and OnePlus phones also open App settings and turn on Autostart, and set Battery to No restrictions.'
+                '${_wake == null ? ' No background run has happened yet.' : ' Last background run: ${prettyDay(_wake!.toLocal())}, ${TimeOfDay.fromDateTime(_wake!.toLocal()).format(context)}.'}',
+                style: const TextStyle(fontSize: 13)),
+            const SizedBox(height: 10),
+            Wrap(spacing: 8, children: [
+              FilledButton(onPressed: () => _power.invokeMethod('request').catchError((_) => null), child: const Text('Allow')),
+              OutlinedButton(onPressed: () => _power.invokeMethod('appSettings').catchError((_) => null), child: const Text('App settings')),
+            ]),
+          ]),
+        ),
+      ),
+    );
   }
 }
 
@@ -104,11 +191,11 @@ class _RunStatus extends StatelessWidget {
           final last = runs.isEmpty ? null : runs.last.at;
           final text = status ??
               (ranToday.length == AgentKind.values.length
-                  ? 'All three traded today at ${TimeOfDay.fromDateTime(runs.last.at.toLocal()).format(context)}. Next: the next trading day, 11:00 AM.'
+                  ? 'All three traded today at ${TimeOfDay.fromDateTime(runs.last.at.toLocal()).format(context)}. Next: the next market day, from 9:45 AM.'
                   : canTrade
                       ? 'Ready to trade today.'
-                      : 'They trade every market day at about 11:00 AM, even with the app closed.${last == null ? '' : ' Last run ${prettyDay(last.toLocal())}.'}');
-          return Row(children: [
+                      : 'They trade once every market day after 9:45 AM: in the background, or as soon as you open the app.${last == null ? '' : ' Last run ${prettyDay(last.toLocal())}.'}');
+          final row = Row(children: [
             if (status != null) ...[
               const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2)),
               const SizedBox(width: 8),
@@ -117,6 +204,20 @@ class _RunStatus extends StatelessWidget {
             if (status == null && canTrade && ranToday.length < AgentKind.values.length)
               FilledButton.tonal(onPressed: () => session.runAgents?.call(), child: const Text('Run now')),
           ]);
+          return ValueListenableBuilder(
+            valueListenable: session.agentError,
+            builder: (context, err, _) => err == null || status != null || ranToday.length == AgentKind.values.length
+                ? row
+                : Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                    row,
+                    const SizedBox(height: 8),
+                    Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                      Icon(Icons.error_outline, size: 18, color: cs.error),
+                      const SizedBox(width: 6),
+                      Expanded(child: Text(err, style: TextStyle(color: cs.error, fontSize: 12.5))),
+                    ]),
+                  ]),
+          );
         },
       );
 }
@@ -491,7 +592,7 @@ class AgentScreen extends StatelessWidget {
             if (cfg.targetBps != null) line('Take profit', '+${cfg.targetBps! / 100}%'),
             if (cfg.maxHoldDays != null) line('Longest hold', '${cfg.maxHoldDays} days'),
             line('Costs', '0.1% per trade'),
-            line('When', 'Every market day about 11:00 AM; 4:00 PM if it missed'),
+            line('When', 'Once every market day after 9:45 AM: background check every hour, or when you open the app'),
             line('Sizing', 'Jumpier stocks get smaller positions (volatility targeting)'),
             line('Market mood', 'Risk-off markets cut new buying to 35%; neutral to 70%'),
             line('Drawdown brake', 'Half-size buys after an 8% fall from its peak; none after 15%'),

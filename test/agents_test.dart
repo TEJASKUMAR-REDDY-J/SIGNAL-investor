@@ -9,7 +9,9 @@ import 'package:http/testing.dart';
 import 'package:signal_investor/db/db.dart';
 import 'package:signal_investor/engine/agents.dart';
 import 'package:signal_investor/engine/calendar.dart';
+import 'package:signal_investor/engine/scoring.dart';
 import 'package:signal_investor/pipeline/agents_run.dart';
+import 'package:signal_investor/pipeline/instruments.dart';
 import 'package:signal_investor/sources/groq.dart';
 import 'package:signal_investor/sources/net.dart';
 import 'package:signal_investor/sources/yahoo.dart';
@@ -164,6 +166,179 @@ void main() {
     expect(q.priceE4, 23049000);
   });
 
+  group('regressions 2026-10-15', () {
+    test('duplicate stock rows (app + background job) are merged, references follow, and cannot come back', () async {
+      final m = MarketDb(NativeDatabase.memory());
+      final p = ProfileDb(NativeDatabase.memory());
+      final a = await m.instrumentFor(kind: 'stock', name: 'TCS', nseSymbol: 'TCS', yahooTicker: 'TCS.NS');
+      // Simulate a database from before the fix: drop the guards, insert a twin.
+      for (final c in ['nse_symbol', 'yahoo_ticker']) {
+        await m.customStatement('DROP INDEX ux_instruments_$c');
+      }
+      final twin = await m.into(m.instruments).insert(
+          InstrumentsCompanion.insert(kind: 'stock', name: 'TCS', nseSymbol: const Value('TCS'), yahooTicker: const Value('TCS.NS')));
+      await m.putPrices(twin, 'yahoo', [('2026-10-14', 1)]);
+      await m.into(m.agentTrades).insert(AgentTradesCompanion.insert(
+          agent: 'daily', instrumentId: twin, date: '2026-10-14', at: DateTime.utc(2026, 10, 14), side: 'buy', unitsE4: 10000, priceE4: 1));
+      await p.into(p.watchlist).insert(WatchlistCompanion.insert(instrumentId: Value(twin), addedAt: DateTime.utc(2026)));
+      await expectLater((m.select(m.instruments)..where((i) => i.nseSymbol.equals('TCS'))).getSingleOrNull(), throwsA(anything),
+          reason: 'the old failure: Too many elements');
+
+      await m.dedupeInstruments();
+      expect(await m.select(m.instruments).get(), hasLength(1));
+      expect(await ensureStock(m, 'TCS', 'TCS'), a.id);
+      expect((await m.select(m.agentTrades).getSingle()).instrumentId, a.id);
+      expect((await m.select(m.prices).getSingle()).instrumentId, a.id);
+      await p.applyMerges(await m.instrumentMerges());
+      expect((await p.select(p.watchlist).getSingle()).instrumentId, a.id);
+      // Guards are back: a concurrent insert of the same symbol keeps one row.
+      await Future.wait([for (var i = 0; i < 5; i++) ensureStock(m, 'INFY', 'Infosys')]);
+      expect((await m.select(m.instruments).get()).where((i) => i.nseSymbol == 'INFY'), hasLength(1));
+    });
+
+    test('a held stock without a price counts at cost, not zero', () {
+      final b = AgentBook([('2026-10-13', 'buy', 1, 10 * 10000, 1000 * 10000, 0)]);
+      expect(b.valueAt(const {}), agentStartCashPaise);
+      expect(b.valueAt({1: 1100 * 10000}), agentStartCashPaise + 1000 * rs);
+    });
+
+    test('Yahoo session: concurrent callers share one cookie and crumb; 401 reopens once', () async {
+      var opens = 0, crumbN = 0, firstQs = true;
+      final net = Net(client: MockClient((r) async {
+        if (r.url.host == 'fc.yahoo.com') {
+          opens++;
+          return http.Response('', 404, headers: {'set-cookie': 'A=$opens; path=/'});
+        }
+        if (r.url.path.contains('getcrumb')) return http.Response('crumb${++crumbN}', 200);
+        // A crumb only works with the cookie it was issued for.
+        final cookieN = r.headers['Cookie']!.split('=').last;
+        final ok = r.url.queryParameters['crumb'] == 'crumb$cookieN';
+        if (firstQs && ok && crumbN == 1) {
+          firstQs = false;
+          return http.Response('', 401); // session expired once
+        }
+        return ok
+            ? http.Response('{"quoteSummary":{"result":[{"defaultKeyStatistics":{"trailingEps":{"raw":20},"bookValue":{"raw":100}}}]}}', 200)
+            : http.Response('', 401);
+      }));
+      final y = YahooSession(net);
+      final r = await Future.wait([for (final t in ['A.NS', 'B.NS', 'C.NS', 'D.NS']) y.fundamentals(t)]);
+      expect(opens, 2); // one shared open, one reopen after the 401
+      expect(r.every((f) => (f['roe']! - 0.2).abs() < 1e-9), isTrue, reason: 'ROE from EPS / book value');
+    });
+
+    test('spark history: one failed batch loses its 20 names, not the whole run', () async {
+      var call = 0;
+      final net = Net(client: MockClient((r) async {
+        if (call++ == 0) return http.Response('', 404);
+        return http.Response(File('test/fixtures/yahoo_spark_1mo.json').readAsStringSync(), 200);
+      }));
+      final h = await yahooSparkHistory(net, [for (var i = 0; i < 20; i++) 'X$i.NS', 'TCS.NS']);
+      expect(h.keys, contains('TCS.NS'));
+      final dead = Net(client: MockClient((r) async => http.Response('', 404)));
+      await expectLater(yahooSparkHistory(dead, ['TCS.NS']), throwsA(isA<FetchError>()));
+    });
+
+    test('no data at all: a clear error the app can show, and nothing logged', () async {
+      final m = MarketDb(NativeDatabase.memory());
+      nse = MarketCalendar(const {});
+      await m.into(m.universe).insert(UniverseCompanion.insert(symbol: 'AAA', name: 'AAA Ltd', nifty500: const Value(true)));
+      final net = Net(client: MockClient((r) async => http.Response('', 404)));
+      await expectLater(runAgents(m, net, nowUtc: DateTime.utc(2026, 10, 14, 5, 30)), throwsA(isA<AgentsError>()));
+      expect(await m.select(m.agentRuns).get(), isEmpty); // still due: Run now can retry
+      expect((await m.select(m.fetchLog).get()).where((f) => f.source == 'agents-run'), isEmpty, reason: 'lease released after a failed run');
+    });
+
+    test('one run at a time across the app and the background job', () async {
+      final m = MarketDb(NativeDatabase.memory());
+      nse = MarketCalendar(const {});
+      await m.logFetch('agents-run'); // the other process started a minute ago
+      final net = Net(client: MockClient((r) async => http.Response('', 404)));
+      await expectLater(runAgents(m, net, nowUtc: DateTime.utc(2026, 10, 14, 5, 30)),
+          throwsA(isA<AgentsError>().having((e) => e.message, 'message', contains('already running'))));
+    });
+
+    test('quality filter: missing cash flow falls back to positive earnings', () {
+      ScanInput s(Map<String, num?> f) => ScanInput('X', 'X', 'Y', f, const [], DateTime.utc(2026));
+      const base = {'roe': 0.2, 'marketCap': 1e12};
+      expect(filterOut(s({...base, 'eps': 10})), 'not enough price history'); // passes quality
+      expect(filterOut(s({...base, 'eps': -1})), 'no positive cash flow');
+      expect(filterOut(s({...base, 'freeCashflow': -1, 'operatingCashflow': -1, 'eps': 10})), 'no positive cash flow');
+    });
+  });
+
+  test('a cautious AI that buys nothing: the agents still invest the money for the day', () async {
+    final m = MarketDb(NativeDatabase.memory());
+    nse = MarketCalendar(const {});
+    for (final (i, s) in ['AAA', 'BBB', 'CCC', 'DDD'].indexed) {
+      await m.into(m.universe).insert(UniverseCompanion.insert(symbol: s, name: '$s Ltd', industry: Value('Ind$i'), nifty500: const Value(true)));
+      await m.into(m.fundamentals).insert(FundamentalsCompanion.insert(
+          symbol: s,
+          json: jsonEncode({
+            'f': {'roe': 0.25, 'debtToEquity': 10, 'freeCashflow': 1e9, 'marketCap': 1e12, 'pe': 20, 'revenueGrowth': 0.2, 'earningsGrowth': 0.2},
+            'c': [for (var d = 0; d < 800; d++) [DateTime.utc(2023, 8, 1).add(Duration(days: d)).toIso8601String().substring(0, 10), 1000000 + d * 1000 * (i + 1)]],
+            'pAt': '2026-10-13T00:00:00.000Z',
+          }),
+          fetchedAt: DateTime.utc(2026, 10, 13)));
+    }
+    final net = Net(client: MockClient((r) async {
+      if (r.url.path.contains('spark')) {
+        return http.Response(
+            jsonEncode({
+              'spark': {
+                'result': [
+                  for (final s in r.url.queryParameters['symbols']!.split(','))
+                    {
+                      'symbol': s,
+                      'response': [
+                        {
+                          'meta': {'regularMarketPrice': 125.0, 'chartPreviousClose': 90.0, 'regularMarketTime': 1791966626},
+                          'indicators': {
+                            'quote': [
+                              {'close': [for (var d = 0; d < 260; d++) 70.0 + d * 0.2 + (d % 2 == 0 ? 1.5 : -1.5)]}
+                            ]
+                          }
+                        }
+                      ]
+                    }
+                ]
+              }
+            }),
+            200);
+      }
+      if (r.url.host == 'api.groq.com') {
+        final args = {'buys': [], 'sells': [], 'bull_case': 'b', 'bear_case': 'Risk-off market.', 'summary': 'Holding cash: market is risk-off.'};
+        return http.Response(
+            jsonEncode({
+              'choices': [
+                {
+                  'message': {
+                    'content': '',
+                    'tool_calls': [
+                      {'id': 'c1', 'type': 'function', 'function': {'name': 'submit_decision', 'arguments': jsonEncode(args)}}
+                    ],
+                  }
+                }
+              ]
+            }),
+            200);
+      }
+      return http.Response('', 404);
+    }));
+    final now = DateTime.utc(2026, 10, 14, 5, 30);
+    await runAgents(m, net, groqKey: 'k', nowUtc: now);
+    final trades = await m.select(m.agentTrades).get();
+    final runs = {for (final r in await m.select(m.agentRuns).get()) r.agent: r};
+    final cap = dayBudget(AgentKind.monthly, agentMonthlyLimitPaise,
+        tradingDaysLeft: tradingDaysLeft(DateTime.utc(2026, 10, 14), nse.isTradingDay), rebalanceDaysLeft: 1);
+    final monthly = trades.where((t) => t.agent == 'monthly').fold(0, (a, t) => a + t.unitsE4 * t.priceE4 ~/ 1000000);
+    expect(monthly, greaterThan(cap * 0.9), reason: 'Monthly invests its full daily share');
+    for (final k in ['daily', 'weekly', 'monthly']) {
+      expect(trades.where((t) => t.agent == k), isNotEmpty, reason: k);
+      expect(runs[k]!.summary, contains('from the rule picks'), reason: k);
+    }
+  });
+
   test('end to end: data -> rules -> AI -> limits -> log; once per day', () async {
     final m = MarketDb(NativeDatabase.memory());
     nse = MarketCalendar(const {});
@@ -253,14 +428,22 @@ void main() {
     expect(trades, isNotEmpty);
     for (final k in AgentKind.values) {
       final mine = trades.where((t) => t.agent == k.name).toList();
-      // The AI asked for Rs 80,000 of AAA: capped at Rs 50,000; ZZZ ignored.
-      expect(mine.map((t) => t.instrumentId).toSet().length, 1, reason: k.name);
+      // The AI asked for Rs 80,000 of AAA: capped at Rs 50,000; ZZZ ignored. Any gap
+      // below the day's minimum is filled from the rule picks (reasons from the rules).
+      final aaa = mine.where((t) => t.reason == 'owner prefers it, strong growth').toList();
+      expect(aaa, hasLength(1), reason: k.name);
       expect(mine.every((t) => t.unitsE4 * t.priceE4 ~/ 1000000 <= 5000000), isTrue);
-      expect(mine.single.reason, 'owner prefers it, strong growth');
+      expect(mine.where((t) => t != aaa.single).every((t) => t.instrumentId != aaa.single.instrumentId), isTrue);
     }
     final runs = await m.select(m.agentRuns).get();
     expect(runs.map((r) => r.agent).toSet(), {'daily', 'weekly', 'monthly'});
-    expect(runs.every((r) => r.ai && r.summary == 'Bought AAA.' && r.bull == 'Rising trend and growth.' && r.toolCalls == 1), isTrue);
+    expect(runs.every((r) => r.ai && r.summary.startsWith('Bought AAA.') && r.bull == 'Rising trend and growth.' && r.toolCalls == 1), isTrue);
+    expect(brief, contains('Invest at least'));
+    // Monthly invests its whole daily share even when the AI's pick covers only part of it.
+    final cap = dayBudget(AgentKind.monthly, agentMonthlyLimitPaise,
+        tradingDaysLeft: tradingDaysLeft(DateTime.utc(2026, 10, 14), nse.isTradingDay), rebalanceDaysLeft: 1);
+    final monthly = trades.where((t) => t.agent == 'monthly').fold(0, (a, t) => a + t.unitsE4 * t.priceE4 ~/ 1000000);
+    expect(monthly, greaterThan(cap * 0.9));
     expect(runs.first.regime, isNotNull);
     // Same day again: nothing.
     expect(await runAgents(m, net, groqKey: 'k', nowUtc: now.add(const Duration(hours: 2))), isEmpty);

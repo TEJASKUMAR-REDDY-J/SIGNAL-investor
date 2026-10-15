@@ -1,6 +1,10 @@
 package com.signalinvestor.signal_investor
 
+import android.content.Intent
 import android.net.ConnectivityManager
+import android.net.Uri
+import android.os.PowerManager
+import android.provider.Settings
 import android.net.NetworkCapabilities
 import android.os.Bundle
 import android.view.WindowManager
@@ -29,6 +33,23 @@ class MainActivity : FlutterFragmentActivity() {
                 )
             } else {
                 result.notImplemented()
+            }
+        }
+        // "signal/power": background runs need the app exempt from battery optimisation;
+        // many phones (Xiaomi, Oppo, Vivo, Samsung) otherwise stop WorkManager jobs once the app is closed.
+        MethodChannel(flutterEngine.dartExecutor.binaryMessenger, "signal/power").setMethodCallHandler { call, result ->
+            val pm = getSystemService(POWER_SERVICE) as PowerManager
+            when (call.method) {
+                "isIgnoring" -> result.success(pm.isIgnoringBatteryOptimizations(packageName))
+                "request" -> {
+                    startActivity(Intent(Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS, Uri.parse("package:$packageName")))
+                    result.success(null)
+                }
+                "appSettings" -> {
+                    startActivity(Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, Uri.parse("package:$packageName")))
+                    result.success(null)
+                }
+                else -> result.notImplemented()
             }
         }
     }

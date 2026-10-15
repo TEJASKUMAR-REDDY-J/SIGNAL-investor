@@ -1,4 +1,3 @@
-import 'package:drift/drift.dart';
 
 import '../db/db.dart';
 import '../sources/net.dart';
@@ -10,13 +9,7 @@ const indexTickers = {'^NSEI': 'NIFTY 50', '^BSESN': 'SENSEX', '^NSEBANK': 'NIFT
 Future<List<Instrument>> ensureIndices(MarketDb m) async {
   final out = <Instrument>[];
   for (final e in indexTickers.entries) {
-    var i = await (m.select(m.instruments)..where((x) => x.yahooTicker.equals(e.key))).getSingleOrNull();
-    if (i == null) {
-      final id = await m.into(m.instruments).insert(InstrumentsCompanion.insert(
-          kind: 'index', name: e.value, yahooTicker: Value(e.key), aliases: Value(e.key == '^NSEI' ? 'index' : '')));
-      i = await (m.select(m.instruments)..where((x) => x.id.equals(id))).getSingle();
-    }
-    out.add(i);
+    out.add(await m.instrumentFor(kind: 'index', name: e.value, yahooTicker: e.key, aliases: e.key == '^NSEI' ? 'index' : ''));
   }
   return out;
 }

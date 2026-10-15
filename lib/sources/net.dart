@@ -37,6 +37,9 @@ class Net {
 
   bool blocked(String source) => _blockedUntil[source]?.isAfter(now()) ?? false;
 
+  /// When a rate-limited [source] may be asked again (null when it is not blocked).
+  DateTime? blockedUntil(String source) => blocked(source) ? _blockedUntil[source] : null;
+
   Future<http.Response> get(String source, Uri url, {Map<String, String> headers = const {}}) async {
     if (url.scheme != 'https') throw FetchError(source, 'HTTPS only');
     if (blocked(source)) throw FetchError(source, 'rate-limited, backing off');

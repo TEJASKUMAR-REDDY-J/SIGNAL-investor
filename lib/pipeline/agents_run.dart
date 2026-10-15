@@ -20,6 +20,14 @@ import 'scan.dart';
 
 const agentModel = 'openai/gpt-oss-120b';
 
+/// A whole run could not start (no list, no prices); the message is shown to the user.
+class AgentsError implements Exception {
+  final String message;
+  const AgentsError(this.message);
+  @override
+  String toString() => message;
+}
+
 /// IST calendar day of [nowUtc].
 DateTime istDay(DateTime nowUtc) {
   final ist = nowUtc.toUtc().add(const Duration(hours: 5, minutes: 30));
@@ -81,7 +89,8 @@ String _pc(double x) => '${x >= 0 ? '+' : ''}${(x * 100).toStringAsFixed(1)}%';
 List<double> _d(List<int> e4) => [for (final x in e4) x / 10000];
 
 /// Runs every agent that has not traded today. Returns one line per agent for the
-/// notification. Never throws for a single agent's failure.
+/// notification. Never throws for a single agent's failure; throws [AgentsError] when
+/// the whole run cannot start (no data, or a run already going in the other process).
 Future<List<String>> runAgents(
   MarketDb m,
   Net net, {
@@ -91,6 +100,35 @@ Future<List<String>> runAgents(
   void Function(String)? onStatus,
 }) async {
   final now = (nowUtc ?? DateTime.now()).toUtc();
+  if ((await agentsDue(m, now)).isEmpty) return const [];
+  // The app and the background job share market.db: one run at a time (a lease that
+  // expires, so a killed run never blocks the next day).
+  final lease = await (m.select(m.fetchLog)..where((f) => f.source.equals(_lease))).getSingleOrNull();
+  final started = lease?.lastAttemptAt;
+  if (started != null && DateTime.now().difference(started).abs() < const Duration(minutes: 15)) {
+    throw const AgentsError('The agents are already running in the background. Their trades appear here in a few minutes.');
+  }
+  await m.logFetch(_lease);
+  try {
+    return await _run(m, net, groqKey: groqKey, model: model, now: now, onStatus: onStatus);
+  } finally {
+    await (m.delete(m.fetchLog)..where((f) => f.source.equals(_lease))).go();
+  }
+}
+
+const _lease = 'agents-run';
+
+/// Least share of the day's budget each agent invests when the rules found buys.
+const minDeployShare = {AgentKind.daily: 0.5, AgentKind.weekly: 0.5, AgentKind.monthly: 1.0};
+
+Future<List<String>> _run(
+  MarketDb m,
+  Net net, {
+  required String? groqKey,
+  required String model,
+  required DateTime now,
+  void Function(String)? onStatus,
+}) async {
   final due = await agentsDue(m, now);
   if (due.isEmpty) return const [];
   final today = istDay(now);
@@ -120,18 +158,33 @@ Future<List<String>> runAgents(
   final instruments = await (m.select(m.instruments)..where((i) => i.nseSymbol.isNotNull())).get();
   final idOf = {for (final i in instruments) i.nseSymbol!: i.id};
 
-  // 3. The pool: top-ranked names, anything with news, every agent holding; a year of closes each.
+  // 3. The pool: all of NIFTY 500 plus every agent holding; a year of closes each (25 batched requests).
   final trades = await (m.select(m.agentTrades)..orderBy([(t) => OrderingTerm.asc(t.id)])).get();
   final runs = await (m.select(m.agentRuns)..orderBy([(r) => OrderingTerm.asc(r.id)])).get();
   final books = {for (final k in AgentKind.values) k: bookFor(trades, k)};
   final heldIds = {for (final b in books.values) ...b.positions.keys};
   final symOf = {for (final i in instruments) i.id: i.nseSymbol!};
   final pool = <String>{
-    for (final c in ideas.take(120)) c.input.symbol,
-    for (final id in {...n7.keys, ...heldIds}) ?symOf[id],
+    ...listings.keys,
+    for (final id in heldIds) ?symOf[id],
   }..removeWhere((s) => !listings.containsKey(s));
+  if (pool.isEmpty) {
+    throw const AgentsError('Could not read the NIFTY 500 list or its data. Check the internet connection and tap Run now again.');
+  }
+  // A big scan can trip Yahoo's rate limit; wait it out (up to 11 minutes) instead of failing.
+  for (DateTime? until; (until = net.blockedUntil('yahoo')) != null;) {
+    final left = until!.difference(net.now());
+    if (left > const Duration(minutes: 11)) break;
+    onStatus?.call('Yahoo asked us to slow down. Resuming in ${left.inMinutes + 1} min…');
+    await Future<void>.delayed(left < const Duration(seconds: 5) ? left : const Duration(seconds: 5));
+  }
   onStatus?.call('Fetching a year of prices for ${pool.length} stocks…');
-  final hist = await yahooSparkHistory(net, ['^NSEI', '^INDIAVIX', for (final s in pool) '$s.NS'], range: '1y');
+  final Map<String, (Quote, List<int>)> hist;
+  try {
+    hist = await yahooSparkHistory(net, ['^NSEI', '^INDIAVIX', for (final s in pool) '$s.NS'], range: '1y');
+  } on FetchError catch (e) {
+    throw AgentsError('Could not fetch prices from Yahoo (${e.message}). Tap Run now again in a few minutes.');
+  }
   final niftyCloses = hist['^NSEI'] == null ? const <double>[] : _d(hist['^NSEI']!.$2);
   final vix = hist['^INDIAVIX'] == null ? null : hist['^INDIAVIX']!.$1.priceE4 / 10000;
 
@@ -161,6 +214,7 @@ Future<List<String>> runAgents(
     cands[id] = build(id, s, q, closes, Technicals.of(_d(closes), index: niftyCloses));
     priceRows.add((id, q.day, q.priceE4));
   }
+  if (cands.isEmpty) throw const AgentsError('Yahoo returned no prices. Tap Run now again in a few minutes.');
   await m.batch((b) => b.insertAllOnConflictUpdate(m.prices, [
         for (final (id, d, p) in priceRows)
           PricesCompanion.insert(instrumentId: id, date: d, closeE4: p, source: 'yahoo', fetchedAt: DateTime.now()),
@@ -178,8 +232,9 @@ Future<List<String>> runAgents(
     final weeklyFirst = k == AgentKind.weekly && !trades.any((t) => t.agent == k.name);
     final values = [for (final r in runs) if (r.agent == k.name) r.valuePaise];
     final (brake, why) = drawdownBrake(values);
-    // The monthly compounder keeps buying through dips, only slower.
-    final scale = (k == AgentKind.monthly ? max(0.7, regime.budgetScale) : regime.budgetScale) * brake;
+    // The monthly compounder invests its full share whatever the mood (like a SIP); the
+    // traders slow down in a weak market but never below 60%.
+    final scale = (k == AgentKind.monthly ? 1.0 : max(0.6, regime.budgetScale)) * brake;
     scales[k] = (scale, why);
     return propose(k, books[k]!, cands, today,
         rebalanceDay: weeklyFirst || firstOfWeek,
@@ -245,6 +300,7 @@ Future<List<String>> runAgents(
       var ai = false;
       String? bull, bear;
       var toolCalls = 0;
+      final rulePlan = plan;
       if (groqKey != null && (plan.shortlist.isNotEmpty || book.positions.isNotEmpty)) {
         final myNotes = [for (final x in notes) if (x.agent == null || x.agent == k.name) x.body];
         final runner = _tools(m, k, book, cands, regime, stats, lessons.take(6).toList(), today, cap, symOf, items);
@@ -277,15 +333,43 @@ Future<List<String>> runAgents(
           ai = true;
         }
       }
+      // The AI may be cautious, but the agents must keep investing: top up with the rule
+      // picks to at least the minimum share of today's budget (all of it for Monthly).
+      final floor = (cap * minDeployShare[k]!).round();
+      var planned = plan.buys.fold(0, (a, b) => a + b.amountPaise);
+      final topUp = <PlannedBuy>[];
+      if (rulePlan.buys.isNotEmpty) {
+        // A buying day: the rule buys first, then further down the shortlist.
+        var slots = cfg.maxHoldings - book.positions.length + plan.sells.length -
+            plan.buys.where((b) => !book.positions.containsKey(b.instrumentId)).length;
+        for (final c in [for (final b in rulePlan.buys) cands[b.instrumentId]!, ...rulePlan.shortlist]) {
+          if (planned >= floor) break;
+          final owned = book.positions.containsKey(c.instrumentId);
+          if ([...plan.buys, ...topUp].any((x) => x.instrumentId == c.instrumentId)) continue;
+          if (owned ? k != AgentKind.monthly : slots <= 0) continue;
+          final amount = min(floor - planned, volScaled(agentPerStockDayPaise, c.tech?.vol20));
+          topUp.add(PlannedBuy(c.instrumentId, amount, whyBuy(k, c)));
+          planned += amount;
+          if (!owned) slots--;
+        }
+      }
+      if (topUp.isNotEmpty) plan = AgentPlan([...plan.buys, ...topUp], plan.sells, plan.shortlist);
       final orders = enforce(book, plan, cands, today, dayCapPaise: cap);
       final at = DateTime.now();
+      var already = false;
       await m.transaction(() async {
+        // The background job and the app can both start a run; only the first one trades.
+        already = await (m.select(m.agentRuns)..where((r) => r.agent.equals(k.name) & r.date.equals(date))).get().then((x) => x.isNotEmpty);
+        if (already) return;
+        await m.into(m.agentRuns).insert(AgentRunsCompanion.insert(
+            agent: k.name, date: date, at: at, summary: '…', valuePaise: book.valueAt({}), cashPaise: book.cashPaise));
         for (final o in orders) {
           await m.into(m.agentTrades).insert(AgentTradesCompanion.insert(
               agent: k.name, instrumentId: o.instrumentId, date: date, at: at, side: o.side, unitsE4: o.units4,
               priceE4: o.priceE4, feesPaise: Value(o.feesPaise), reason: Value(o.reason)));
         }
       });
+      if (already) continue;
       final after = bookFor(await m.select(m.agentTrades).get(), k);
       final value = after.valueAt({for (final c in cands.values) c.instrumentId: c.priceE4});
       final buys = orders.where((o) => o.side == 'buy'), sells = orders.where((o) => o.side == 'sell');
@@ -297,18 +381,18 @@ Future<List<String>> runAgents(
               if (buys.isNotEmpty) 'bought ${buys.length} (${_rs(spent)})',
               if (sells.isNotEmpty) 'sold ${sells.length} (${_rs(got)})',
             ].join(', ');
+      final aiSaid = summary.isNotEmpty;
       if (summary.isEmpty) {
         summary = orders.isEmpty
             ? 'Held steady: nothing met the rules today${brakeWhy == null ? '' : ' ($brakeWhy)'}.'
             : '${line[0].toUpperCase()}${line.substring(1)} under the rules.';
       }
-      await m.into(m.agentRuns).insert(AgentRunsCompanion.insert(
-          agent: k.name,
-          date: date,
-          at: at,
-          summary: summary,
-          valuePaise: value,
-          cashPaise: after.cashPaise,
+      final toppedUp = [for (final b in topUp) if (orders.any((o) => o.instrumentId == b.instrumentId)) cands[b.instrumentId]!.symbol];
+      if (ai && aiSaid && toppedUp.isNotEmpty) summary = '$summary Also bought ${toppedUp.join(', ')} from the rule picks to keep investing the money for this month.';
+      await (m.update(m.agentRuns)..where((r) => r.agent.equals(k.name) & r.date.equals(date))).write(AgentRunsCompanion(
+          summary: Value(summary),
+          valuePaise: Value(value),
+          cashPaise: Value(after.cashPaise),
           ai: Value(ai),
           bull: Value(bull),
           bear: Value(bear),
@@ -421,7 +505,9 @@ String _brief(AgentKind k, AgentBook book, AgentPlan plan, Map<int, AgentCand> c
     'Agent: ${cfg.name}. Style: ${cfg.style}',
     'Today ${fmtDay(today)}. Market: ${regime.line}.${brakeWhy == null ? '' : ' Drawdown brake: $brakeWhy.'}',
     'Cash ${_rs(book.cashPaise)}. New-money room this month ${_rs(book.monthRoom(month))}. Spend at most ${_rs(capPaise)} in total '
-        'today, ₹50,000 per stock, max ${cfg.maxHoldings} holdings, max $agentMaxPerSector per industry.',
+        'today, ₹50,000 per stock, max ${cfg.maxHoldings} holdings, max $agentMaxPerSector per industry. '
+        'Invest at least ${_rs((capPaise * minDeployShare[k]!).round())} today: your job is to put the money for this month to work in the best names, '
+        'so choose which, not whether. Rule picks fill any gap you leave.',
     'Holdings: ${book.positions.isEmpty ? '(none)' : [for (final p in book.positions.values) cands[p.instrumentId]?.symbol].join(', ')}',
     'Rule plan:',
     for (final s in plan.sells) 'SELL ${cands[s.instrumentId]?.symbol}: ${s.reason}',

@@ -713,17 +713,14 @@ class _NewInstrumentState extends State<_NewInstrument> {
     if (!_form.currentState!.validate()) return;
     final m = widget.market;
     final code = _code.text.trim().toUpperCase();
-    final existing = await (m.select(m.instruments)
-          ..where((i) => _kind == 'mf' ? i.schemeCode.equals(code) : i.nseSymbol.equals(code)))
-        .getSingleOrNull();
-    final id = existing?.id ??
-        await m.into(m.instruments).insert(InstrumentsCompanion.insert(
-              kind: _kind,
-              name: _name.text.trim(),
-              schemeCode: Value(_kind == 'mf' ? code : null),
-              nseSymbol: Value(_kind == 'stock' ? code : null),
-              yahooTicker: Value(_kind == 'stock' ? '$code.NS' : null),
-            ));
+    final id = (await m.instrumentFor(
+      kind: _kind,
+      name: _name.text.trim(),
+      schemeCode: _kind == 'mf' ? code : null,
+      nseSymbol: _kind == 'stock' ? code : null,
+      yahooTicker: _kind == 'stock' ? '$code.NS' : null,
+    ))
+        .id;
     if (mounted) Navigator.pop(context, id);
   }
 

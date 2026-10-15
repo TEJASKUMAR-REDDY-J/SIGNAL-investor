@@ -9,18 +9,12 @@ import '../sources/net.dart';
 import '../sources/yahoo.dart';
 
 /// The instrument row for an NSE symbol, created on first use.
-Future<int> ensureStock(MarketDb m, String symbol, String name) async {
-  final hit = await (m.select(m.instruments)..where((i) => i.nseSymbol.equals(symbol))).getSingleOrNull();
-  return hit?.id ??
-      await m.into(m.instruments).insert(InstrumentsCompanion.insert(
-          kind: 'stock', name: name, nseSymbol: Value(symbol), yahooTicker: Value('$symbol.NS')));
-}
+Future<int> ensureStock(MarketDb m, String symbol, String name) async =>
+    (await m.instrumentFor(kind: 'stock', name: name, nseSymbol: symbol, yahooTicker: '$symbol.NS')).id;
 
 /// The instrument row for an AMFI scheme code, created on first use.
-Future<int> ensureFund(MarketDb m, String code, String name) async {
-  final hit = await (m.select(m.instruments)..where((i) => i.schemeCode.equals(code))).getSingleOrNull();
-  return hit?.id ?? await m.into(m.instruments).insert(InstrumentsCompanion.insert(kind: 'mf', name: name, schemeCode: Value(code)));
-}
+Future<int> ensureFund(MarketDb m, String code, String name) async =>
+    (await m.instrumentFor(kind: 'mf', name: name, schemeCode: code)).id;
 
 /// Price history for an instrument seen for the first time (stock page, demo, autofill).
 Future<void> ensureHistory(MarketDb m, Net n, Instrument i) async {

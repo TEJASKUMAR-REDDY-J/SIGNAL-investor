@@ -536,7 +536,7 @@ class _Tile extends StatelessWidget {
           final cs = Theme.of(context).colorScheme;
           if (scores.isEmpty) {
             return Text(
-                'News is checked at 8 AM and 4 PM for what you hold, watch and the Advisor\'s ideas. Each headline about a '
+                'News is checked at 8 AM, 11 AM and 4 PM for what you hold, watch and the Advisor\'s ideas. Each headline about a '
                 'company scores +1 or -1. Nothing labelled in the last 7 days yet.',
                 style: TextStyle(color: cs.onSurfaceVariant, fontSize: 13));
           }

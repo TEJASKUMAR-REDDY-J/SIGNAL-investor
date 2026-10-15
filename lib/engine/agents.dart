@@ -134,7 +134,12 @@ class AgentBook {
   int monthRoom(String month) => max(0, agentMonthlyLimitPaise - monthNet(month));
 
   int valueAt(Map<int, int> pricesE4) =>
-      cashPaise + positions.values.fold(0, (a, p) => a + valuePaise(p.units4, pricesE4[p.instrumentId] ?? 0));
+      cashPaise +
+      positions.values.fold(0, (a, p) {
+        final px = pricesE4[p.instrumentId];
+        // No price yet (fetch failed): count it at cost rather than zero.
+        return a + (px == null || px <= 0 ? p.costPaise : valuePaise(p.units4, px));
+      });
 }
 
 class PlannedBuy {
@@ -243,7 +248,8 @@ String _techNote(AgentCand c) {
   ].join(', ');
 }
 
-String _why(AgentKind k, AgentCand c) => switch (k) {
+/// Plain-words reason the rules give for buying [c].
+String whyBuy(AgentKind k, AgentCand c) => switch (k) {
       AgentKind.daily => [
           if (c.news1 > 0) 'good news today${c.headline == null ? '' : ': ${c.headline}'}',
           'up ${_pc(c.ret1)} today, ${_pc(c.ret5)} in 5 days',
@@ -324,7 +330,7 @@ AgentPlan propose(AgentKind k, AgentBook book, Map<int, AgentCand> cands, DateTi
       if (owned && k != AgentKind.monthly) continue; // traders do not average up/down
       // Jumpier stocks get smaller positions (volatility targeting).
       final amount = min(budget, volScaled(agentPerStockDayPaise, c.tech?.vol20));
-      buys.add(PlannedBuy(c.instrumentId, amount, _why(k, c)));
+      buys.add(PlannedBuy(c.instrumentId, amount, whyBuy(k, c)));
       budget -= amount;
       if (!owned) slots--;
     }

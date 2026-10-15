@@ -42,7 +42,7 @@ const _faq = [
   ),
   (
     'What is the News pulse?',
-    'At 8 AM and 4 PM the app reads business news and NSE filings for companies you own, watch, or that the Advisor '
+    'At 8 AM, 11 AM and 4 PM the app reads business news and NSE filings for companies you own, watch, or that the Advisor '
         'likes. The AI labels each headline good (+1) or bad (-1) for the company; the pulse adds them up over 7 days. '
         'You get one short notification with the summary.'
   ),
@@ -141,8 +141,8 @@ class _TourScreenState extends State<TourScreen> {
     ),
     (
       Icons.newspaper_outlined,
-      'News, twice a day',
-      'At 8 AM and 4 PM SIGNAL reads the news and company filings for what you hold and follow, scores each headline '
+      'News, three times a day',
+      'At 8 AM, 11 AM and 4 PM SIGNAL reads the news and company filings for what you hold and follow, scores each headline '
           '+1 or -1, and sends one short summary. No price alerts, no noise.'
     ),
     (

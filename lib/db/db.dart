@@ -176,7 +176,70 @@ class MarketDb extends _$MarketDb {
           }
           if (from < 4) await m.createTable(agentMemories);
         },
+        beforeOpen: (_) => dedupeInstruments(),
       );
+
+  /// One row per NSE symbol, Yahoo ticker and AMFI code. The app and the background job
+  /// once inserted the same stocks at the same time, and every later lookup failed with
+  /// "Too many elements". Merges any duplicates into the oldest row (recorded in
+  /// instrument_merges so the profile database can follow), then enforces uniqueness.
+  Future<void> dedupeInstruments() => transaction(() async {
+        await customStatement('CREATE TABLE IF NOT EXISTS instrument_merges (old_id INTEGER PRIMARY KEY, new_id INTEGER NOT NULL)');
+        for (final col in const ['nse_symbol', 'yahoo_ticker', 'scheme_code']) {
+          final dups = await customSelect('SELECT i.id AS old, k.keep AS new FROM instruments i JOIN '
+                  '(SELECT $col AS v, MIN(id) AS keep FROM instruments WHERE $col IS NOT NULL GROUP BY $col HAVING COUNT(*) > 1) k '
+                  'ON i.$col = k.v WHERE i.id <> k.keep')
+              .get();
+          for (final r in dups) {
+            final args = [r.read<int>('new'), r.read<int>('old')];
+            await customStatement('INSERT OR REPLACE INTO instrument_merges (old_id, new_id) VALUES (?2, ?1)', args);
+            for (final t in const ['prices', 'news_items', 'filings', 'agent_trades']) {
+              await customStatement('UPDATE OR IGNORE $t SET instrument_id = ?1 WHERE instrument_id = ?2', args);
+              await customStatement('DELETE FROM $t WHERE instrument_id = ?2', args); // rows the kept one already had
+            }
+            await customStatement('DELETE FROM instruments WHERE id = ?2', args);
+          }
+          await customStatement('CREATE UNIQUE INDEX IF NOT EXISTS ux_instruments_$col ON instruments ($col) WHERE $col IS NOT NULL');
+        }
+      });
+
+  /// Duplicate instrument ids merged away (old -> kept), for [ProfileDb.applyMerges].
+  Future<Map<int, int>> instrumentMerges() async => {
+        for (final r in await customSelect('SELECT old_id, new_id FROM instrument_merges').get())
+          r.read<int>('old_id'): r.read<int>('new_id'),
+      };
+
+  /// The instrument with this key, created if missing. Safe when another process
+  /// inserts the same one at the same moment (the unique index keeps one row).
+  Future<Instrument> instrumentFor(
+      {required String kind,
+      required String name,
+      String? nseSymbol,
+      String? yahooTicker,
+      String? schemeCode,
+      String aliases = ''}) async {
+    Future<Instrument?> find() => (select(instruments)
+          ..where((i) => nseSymbol != null
+              ? i.nseSymbol.equals(nseSymbol)
+              : schemeCode != null
+                  ? i.schemeCode.equals(schemeCode)
+                  : i.yahooTicker.equals(yahooTicker!))
+          ..orderBy([(i) => OrderingTerm.asc(i.id)])
+          ..limit(1))
+        .getSingleOrNull();
+    final hit = await find();
+    if (hit != null) return hit;
+    await into(instruments).insert(
+        InstrumentsCompanion.insert(
+            kind: kind,
+            name: name,
+            nseSymbol: Value(nseSymbol),
+            yahooTicker: Value(yahooTicker),
+            schemeCode: Value(schemeCode),
+            aliases: Value(aliases)),
+        mode: InsertMode.insertOrIgnore);
+    return (await find())!;
+  }
 
   Future<void> logFetch(String source, {Object? error, int rows = 0, DateTime? at}) async {
     final now = at ?? DateTime.now();
@@ -356,6 +419,20 @@ class ProfileDb extends _$ProfileDb {
 
   /// Undo of a delete: same row, same id.
   Future<void> restoreTx(Transaction t) => audited('restore', 'transaction ${t.id}', () => into(transactions).insert(t));
+
+  /// Follows instrument merges from the market database (see MarketDb.dedupeInstruments).
+  Future<void> applyMerges(Map<int, int> merges) async {
+    if (merges.isEmpty) return;
+    await transaction(() async {
+      for (final e in merges.entries) {
+        final args = [e.value, e.key];
+        for (final t in const ['transactions', 'sip_plans', 'theses', 'signals', 'paper_trades', 'watchlist', 'holding_prefs']) {
+          await customStatement('UPDATE OR IGNORE $t SET instrument_id = ?1 WHERE instrument_id = ?2', args);
+          await customStatement('DELETE FROM $t WHERE instrument_id = ?2', args);
+        }
+      }
+    });
+  }
 
   Stream<List<Transaction>> watchTxs([int? instrumentId]) {
     final q = select(transactions)

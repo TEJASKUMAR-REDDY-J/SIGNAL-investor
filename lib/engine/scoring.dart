@@ -43,7 +43,9 @@ String? filterOut(ScanInput s) {
   final mcap = s.f['marketCap'];
   if (roe == null || roe < minRoe) return 'ROE below ${(minRoe * 100).round()}% or missing';
   if (de != null && de > maxDebtToEquityPct) return 'debt above ${maxDebtToEquityPct / 100}x equity';
-  if (requirePositiveCashFlow && !((fcf ?? 0) > 0 || (ocf ?? 0) > 0)) return 'no positive cash flow';
+  // Without cash-flow data (common on Yahoo now), positive earnings stand in.
+  final cashOk = fcf == null && ocf == null ? (s.f['eps'] ?? 0) > 0 : ((fcf ?? 0) > 0 || (ocf ?? 0) > 0);
+  if (requirePositiveCashFlow && !cashOk) return 'no positive cash flow';
   if (mcap == null || mcap < minMarketCapCr * 1e7) return 'too small or market cap missing';
   if (momentumOf(s.closes) == null) return 'not enough price history';
   return null;

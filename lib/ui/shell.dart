@@ -156,11 +156,14 @@ class _ShellState extends State<Shell> with WidgetsBindingObserver {
   Future<void> _runAgents() async {
     if (s.agentStatus.value != null) return;
     s.agentStatus.value = 'Starting the agents…';
+    s.agentError.value = null;
     try {
-      await runAgents(s.market, _net,
+      final lines = await runAgents(s.market, _net,
           groqKey: await groqKeyFor(s.profile.id), onStatus: (x) => mounted ? s.agentStatus.value = x : null);
-    } catch (_) {
-      // Logged per agent inside; the background job retries at 4 PM.
+      final skipped = lines.where((l) => l.contains(': skipped'));
+      if (skipped.isNotEmpty) s.agentError.value = skipped.join(String.fromCharCode(10));
+    } catch (e) {
+      s.agentError.value = e is AgentsError ? e.message : 'The run stopped: $e. Tap Run now to try again.';
     } finally {
       s.agentStatus.value = null;
     }

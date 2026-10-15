@@ -15,31 +15,36 @@ import 'feeds.dart';
 import 'refresh.dart';
 import 'scan.dart';
 
-// The daily job: at 08:00 IST (before the open) and 16:00 IST (after the close)
-// it refreshes prices, NSE filings and news for everything you hold or follow,
-// labels new headlines, warms 40 advisor entries, then posts one digest
-// notification. Only public market data is read: the job opens market.db,
-// never your profile database. Which companies to track is saved by the app.
+// The background job: WorkManager wakes it about once an hour (Android may batch or
+// delay it). Each wake: the paper agents trade if they have not yet today (market days
+// from 09:45 IST), and the news digest runs once per slot (08:00, 11:00 and 16:00 IST):
+// prices, NSE filings and news for everything you hold or follow, labels new
+// headlines, warms 40 advisor entries, then posts one notification. Only public
+// market data is read: the job opens market.db, never your profile database.
 
 const trackedKey = 'tracked_ids'; // JSON list of instrument ids, written by the app
 const digestOnKey = 'digest_on'; // '0' turns the notification off
 const _lastDigestKey = 'last_digest_at';
 const lastCheckKey = 'last_news_check'; // "<ISO time>|<digest or empty>" for Settings
-const _task = 'signal-daily';
-const digestHoursIst = [8, 11, 16]; // 11:00: the paper agents trade (16:00 catches up if missed)
+const lastWakeKey = 'last_bg_wake'; // ISO time of the latest background wake, shown on the Agents tab
+const _task = 'signal-hourly';
+const _oldTask = 'signal-daily'; // the one-off chain used before 2026-10-15
+const digestHoursIst = [8, 11, 16];
 
-/// Next 08:00 or 16:00 IST strictly after [nowUtc].
-DateTime nextSlotUtc(DateTime nowUtc) {
+/// The latest digest slot at or before [nowUtc].
+DateTime lastSlotUtc(DateTime nowUtc) {
   final ist = nowUtc.toUtc().add(const Duration(hours: 5, minutes: 30));
   for (var d = 0; d < 2; d++) {
-    for (final h in digestHoursIst) {
-      final slotIst = DateTime.utc(ist.year, ist.month, ist.day + d, h);
-      final slot = slotIst.subtract(const Duration(hours: 5, minutes: 30));
-      if (slot.isAfter(nowUtc)) return slot;
+    for (final h in digestHoursIst.reversed) {
+      final slot = DateTime.utc(ist.year, ist.month, ist.day - d, h).subtract(const Duration(hours: 5, minutes: 30));
+      if (!slot.isAfter(nowUtc)) return slot;
     }
   }
   throw StateError('unreachable');
 }
+
+/// A digest is due when no digest has run since the latest slot.
+bool digestDue(DateTime nowUtc, DateTime? lastDigestUtc) => lastDigestUtc == null || lastDigestUtc.isBefore(lastSlotUtc(nowUtc));
 
 Future<void> saveTracked(Set<int> ids) => storage.write(key: trackedKey, value: jsonEncode(ids.toList()..sort()));
 
@@ -48,21 +53,21 @@ Future<Set<int>> loadTracked() async {
   return raw == null ? <int>{} : {...(jsonDecode(raw) as List).cast<int>()};
 }
 
-/// Called on every app start and after each run; replaces any pending run.
-Future<void> scheduleDaily({DateTime? nowUtc}) async {
-  final now = (nowUtc ?? DateTime.now()).toUtc();
-  await Workmanager().registerOneOffTask(
+/// Hourly periodic work survives a killed run (a one-off chain did not). Called on every app start.
+Future<void> scheduleBackground() async {
+  await Workmanager().cancelByUniqueName(_oldTask);
+  await Workmanager().registerPeriodicTask(
     _task,
     _task,
-    initialDelay: nextSlotUtc(now).difference(now),
+    frequency: const Duration(hours: 1),
     constraints: Constraints(networkType: NetworkType.connected),
-    existingWorkPolicy: ExistingWorkPolicy.replace,
+    existingWorkPolicy: ExistingPeriodicWorkPolicy.update,
   );
 }
 
 Future<void> initBackground() async {
   await Workmanager().initialize(backgroundDispatcher);
-  await scheduleDaily();
+  await scheduleBackground();
 }
 
 @pragma('vm:entry-point')
@@ -70,11 +75,11 @@ void backgroundDispatcher() {
   Workmanager().executeTask((task, input) async {
     WidgetsFlutterBinding.ensureInitialized();
     try {
+      await storage.write(key: lastWakeKey, value: DateTime.now().toUtc().toIso8601String());
       await runDaily();
     } catch (_) {
-      // Never crash the worker; the next slot tries again.
+      // Never crash the worker; the next wake tries again.
     }
-    await scheduleDaily();
     return true;
   });
 }
@@ -111,9 +116,19 @@ Future<String?> runDaily({DateTime? nowUtc, MarketDb? market, Net? net, bool man
   final m = market ?? await openMarket();
   final n = net ?? Net();
   try {
-    final tracked = await loadTracked();
     final profile = (await loadProfiles()).firstOrNull;
     final key = profile == null ? envKey() : cleanKey(await storage.read(key: 'groq_${profile.id}')) ?? envKey();
+    // Agents first: they matter most and must fit in Android's ~10 minute window.
+    if (!manual && (await agentsDue(m, now)).isNotEmpty) {
+      final agentLines = await runAgents(m, n, groqKey: key, nowUtc: now).catchError((Object e) => ['Agents could not run: $e']);
+      if (agentLines.isNotEmpty && await storage.read(key: digestOnKey) != '0') {
+        await _notify(2, 'agents', 'Paper agents', 'Paper agents traded', agentLines.join(String.fromCharCode(10)));
+      }
+    }
+    final lastDigest = DateTime.tryParse(await storage.read(key: _lastDigestKey) ?? '');
+    if (!manual && !digestDue(now, lastDigest)) return null;
+
+    final tracked = await loadTracked();
     Future<(String, String)?> groq() async => key == null ? null : (key, defaultTagModel);
     Set<int> held() => tracked;
     await Refresher(m, n, extra: [filingsStep(m, n, held), newsStep(m, n, held, groq)]).run(tracked, force: true, nowUtc: now);
@@ -123,9 +138,7 @@ Future<String?> runDaily({DateTime? nowUtc, MarketDb? market, Net? net, bool man
       } catch (_) {}
     }
 
-    final since = manual
-        ? now.subtract(const Duration(hours: 24))
-        : DateTime.tryParse(await storage.read(key: _lastDigestKey) ?? '') ?? now.subtract(const Duration(hours: 12));
+    final since = manual ? now.subtract(const Duration(hours: 24)) : lastDigest ?? now.subtract(const Duration(hours: 12));
     final fresh = await (m.select(m.newsItems)
           ..where((x) => x.publishedAt.isBiggerOrEqualValue(since) & x.instrumentId.isIn(tracked)))
         .get();
@@ -136,12 +149,6 @@ Future<String?> runDaily({DateTime? nowUtc, MarketDb? market, Net? net, bool man
     if (line != null && await storage.read(key: digestOnKey) != '0') {
       final ist = now.add(const Duration(hours: 5, minutes: 30));
       await _notify(1, 'news_pulse', 'Daily news pulse', ist.hour < 12 ? 'Morning news pulse' : 'Evening news pulse', line);
-    }
-    if (!manual) {
-      final agentLines = await runAgents(m, n, groqKey: key, nowUtc: now).catchError((_) => const <String>[]);
-      if (agentLines.isNotEmpty && await storage.read(key: digestOnKey) != '0') {
-        await _notify(2, 'agents', 'Paper agents', 'Paper agents traded', agentLines.join(String.fromCharCode(10)));
-      }
     }
     return line;
   } finally {

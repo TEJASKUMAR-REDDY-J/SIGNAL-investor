@@ -143,7 +143,7 @@ const appGuide = 'How SIGNAL works: '
     'in the Sandbox. The Add button records buys, sells, SIP instalments, dividends, splits and bonuses. '
     'Holdings lists what you own; Activity lists every entry; Plan holds goals and SIP plans. '
     'Lab has the Advisor (rule-ranked stock and fund ideas), the Sandbox, the Time machine (what a SIP would have done) and Ask. '
-    'News is checked at 8 AM and 4 PM; each headline gets +1 or -1 for the company and the Home "News pulse" sums them. '
+    'News is checked at 8 AM, 11 AM and 4 PM; each headline gets +1 or -1 for the company and the Home "News pulse" sums them. '
     'Before selling, "Thinking of selling?" shows the tax cost of selling now versus waiting until lots turn long-term. '
     'The app never places orders: buy or sell in your broker app, then record it here.';
 
